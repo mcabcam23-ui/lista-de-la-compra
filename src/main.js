@@ -277,7 +277,7 @@ function renderStoreLogoPicker(mode) {
           ${renderStoreLogo(selected, 'lg')}
           <span class="store-logo-caret" aria-hidden="true"></span>
         </button>
-        <div class="store-logo-menu" role="listbox" hidden>
+        <div class="store-logo-menu" role="listbox">
           ${STORES.map((s) => {
             const value = isFilter ? (s.id === 'todos' ? 'all' : s.id) : s.id
             const active = isFilter
@@ -573,18 +573,21 @@ function bindEvents() {
   bindStoreSelects()
 }
 
+function closeStorePickers(except = null) {
+  app.querySelectorAll('.store-logo-picker.open').forEach((p) => {
+    if (except && p === except) return
+    p.classList.remove('open')
+    p.querySelector('.store-logo-trigger')?.setAttribute('aria-expanded', 'false')
+  })
+}
+
 function bindStoreSelects() {
-  // Cerrar desplegable de logos al tocar fuera
+  // Cerrar al tocar fuera (click, no pointerdown: evita carreras con el toggle)
   if (!app.dataset.storePickerBound) {
     app.dataset.storePickerBound = '1'
-    document.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.store-logo-picker')) return
-      app.querySelectorAll('.store-logo-picker.open').forEach((p) => {
-        p.classList.remove('open')
-        p.querySelector('.store-logo-trigger')?.setAttribute('aria-expanded', 'false')
-        const m = p.querySelector('.store-logo-menu')
-        if (m) m.hidden = true
-      })
+    document.addEventListener('click', (e) => {
+      if (e.target.closest?.('.store-logo-picker')) return
+      closeStorePickers()
     })
   }
 }
@@ -769,21 +772,12 @@ function onAction(e) {
       addProductQty(btn.dataset.product, 1)
       break
     case 'toggle-store-picker': {
-      const picker = app.querySelector(`.store-logo-picker[data-picker="${btn.dataset.picker}"]`)
+      const picker = btn.closest('.store-logo-picker')
       if (!picker) break
-      const open = picker.classList.toggle('open')
-      const trigger = picker.querySelector('.store-logo-trigger')
-      const menu = picker.querySelector('.store-logo-menu')
-      if (trigger) trigger.setAttribute('aria-expanded', open ? 'true' : 'false')
-      if (menu) menu.hidden = !open
-      // Cerrar otros pickers
-      app.querySelectorAll('.store-logo-picker.open').forEach((p) => {
-        if (p === picker) return
-        p.classList.remove('open')
-        p.querySelector('.store-logo-trigger')?.setAttribute('aria-expanded', 'false')
-        const m = p.querySelector('.store-logo-menu')
-        if (m) m.hidden = true
-      })
+      const willOpen = !picker.classList.contains('open')
+      closeStorePickers(willOpen ? picker : null)
+      picker.classList.toggle('open', willOpen)
+      btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false')
       break
     }
     case 'set-store-filter': {

@@ -229,11 +229,12 @@ button {
   min-width: 0;
   max-width: 100%;
   width: 100%;
-  overflow-x: clip;
+  overflow: visible;
 }
 
 .view.active {
   display: block;
+  overflow: visible;
 }
 
 @keyframes fadeUp {
@@ -1496,6 +1497,7 @@ button {
   position: relative;
   width: fit-content;
   max-width: 100%;
+  z-index: 5;
 }
 
 .store-logo-trigger {
@@ -1521,6 +1523,10 @@ button {
   transition: transform 0.15s ease;
 }
 
+.store-logo-picker.open {
+  z-index: 80;
+}
+
 .store-logo-picker.open .store-logo-caret {
   transform: rotate(225deg);
   margin-top: 4px;
@@ -1528,10 +1534,10 @@ button {
 
 .store-logo-menu {
   position: absolute;
-  z-index: 30;
+  z-index: 80;
   top: calc(100% + 8px);
   left: 0;
-  display: grid;
+  display: none;
   grid-template-columns: repeat(3, 88px);
   gap: 12px;
   padding: 14px;
@@ -1541,8 +1547,8 @@ button {
   box-shadow: 0 14px 32px rgba(20, 40, 30, 0.18);
 }
 
-.store-logo-menu[hidden] {
-  display: none !important;
+.store-logo-picker.open .store-logo-menu {
+  display: grid;
 }
 
 .store-logo-option {
