@@ -370,7 +370,7 @@ var e=Object.defineProperty,t=Object.getOwnPropertyDescriptor,n=Object.getOwnPro
         <button class="primary-btn" type="button" data-action="add-custom-cat">Añadir</button>
       </div>
     </div>
-  `}function cn(){let e=d(R),t=dn(),n=[{id:`all`,name:`Todo`},...e?.subs||[]];return`
+  `}function cn(){let e=d(R),t=dn(),n=[{id:`all`,name:`Todo`},...e?.subs||[]],r=I.items.filter(e=>H!==`todos`&&e.store!==H?!1:(e.productId?x(e.productId):null)?.category===R);return`
     ${$t(`add`)}
     <div class="browse-bar">
       <button class="back-btn" type="button" data-action="set-category" data-category="" aria-label="Volver">←</button>
@@ -389,8 +389,14 @@ var e=Object.defineProperty,t=Object.getOwnPropertyDescriptor,n=Object.getOwnPro
             <em>${t}</em>
           </button>`}).join(``)}
     </div>
+    <div class="aisle-added" aria-live="polite">
+      ${r.length?`<p class="aisle-added-label">En la lista · ${r.reduce((e,t)=>e+t.qty,0)} uds</p>
+             <div class="aisle-added-chips">
+               ${r.map(e=>{let t=x(e.productId)?.name||e.name;return`<span class="aisle-added-chip">×${e.qty} ${Q(t)}</span>`}).join(``)}
+             </div>`:`<p class="aisle-added-empty">Aún no se han añadido productos de este pasillo</p>`}
+    </div>
     <div class="product-grid">
-      ${t.map(un).join(``)||`<p class="section-label">No hay productos en esta sección</p>`}
+      ${t.length?t.map(un).join(``):`<p class="section-label">No hay productos en esta sección</p>`}
     </div>
     <div class="custom-row">
       <div class="quick-add">
@@ -429,14 +435,14 @@ var e=Object.defineProperty,t=Object.getOwnPropertyDescriptor,n=Object.getOwnPro
         <button class="primary-btn" type="button" data-action="add-custom-cat">Añadir</button>
       </div>
     </div>
-  `}function un(e){let t=I.items.find(t=>t.productId===e.id&&t.store===H),n=Ve(I.prices,e.id,e.name,H);return`
+  `}function un(e){let t=I.items.find(t=>t.productId===e.id&&t.store===H),n=Ve(I.prices,e.id,e.name,H),r=t?.qty||0;return`
     <button class="product-card ${t?`in-list`:``}" type="button" data-action="toggle-product" data-product="${$(e.id)}" data-longpress="add-qty" title="Toca: +1 · Mantén: elegir cantidad">
       <span class="product-icon">
         ${E(e,`sm`)}
         ${n?`<span class="price-under">${Q(He(n.price))}</span>`:``}
       </span>
       <span class="name">${Q(e.name)}</span>
-      ${t?`<span class="qty-tag">×${t.qty}</span>`:``}
+      <span class="qty-tag ${r?``:`is-empty`}" aria-hidden="${r?`false`:`true`}">${r?`×${r}`:`×0`}</span>
     </button>
   `}function dn(){if(V.trim()){let e=b(V);return R&&(e=e.filter(e=>e.category===R)),e}if(!R)return[];let e=S(R);return Ht===`all`?e:e.filter(e=>e.sub===Ht)}function fn(e,t){let n=t.trim().toLowerCase().normalize(`NFD`).replace(/[\u0300-\u036f]/g,``);return n?e.filter(e=>((e.productId?x(e.productId):null)?.name||e.name||``).toLowerCase().normalize(`NFD`).replace(/[\u0300-\u036f]/g,``).includes(n)):e}var pn=!1;function mn(){pn||(pn=!0,K.addEventListener(`click`,e=>{if(e.target?.id===`overlay`){X();return}let t=e.target.closest(`[data-action]`);!t||!K.contains(t)||bn({currentTarget:t})}),K.addEventListener(`input`,e=>{e.target?.id===`search`&&(V=e.target.value,q())}),K.addEventListener(`keydown`,e=>{e.key!==`Enter`||e.target?.id!==`custom-name-cat`||(e.preventDefault(),On(e.target.value),e.target.value=``)})),vn(),An(),hn()}function hn(){K.querySelectorAll(`select[data-store-mode="add"]`).forEach(e=>{e.dataset.bound||(e.dataset.bound=`1`,e.addEventListener(`change`,()=>{H=e.value,localStorage.setItem(`compra:store`,H),Z(`Nuevos en ${N(H).name}`),q()}))})}function q(){let e=K.querySelector(`[data-view-panel="lista"]`),t=K.querySelector(`[data-view-panel="catalogo"]`),n=K.querySelector(`[data-view-panel="tickets"]`),r=K.querySelector(`[data-view-panel="historial"]`);L===`lista`&&e&&(e.innerHTML=Qt()),L===`catalogo`&&t&&(t.innerHTML=on()),L===`tickets`&&n&&(n.innerHTML=Fn()),L===`historial`&&r&&(r.innerHTML=Mn());let i=K.querySelector(`#search`);i&&(i.placeholder=L===`lista`?`Buscar en la lista…`:L===`historial`?z?`Buscar en este día…`:`Buscar día o producto…`:L===`tickets`?`Buscar en tickets…`:`Buscar productos…`,i.value!==V&&(i.value=V)),vn(),An(),hn(),yn()}var gn=480,_n=0;function vn(){K.querySelectorAll(`[data-longpress]`).forEach(e=>{if(e.dataset.lpBound)return;e.dataset.lpBound=`1`;let t=null,n=!1,r=()=>{t&&clearTimeout(t),t=null,e.classList.remove(`holding`)};e.addEventListener(`pointerdown`,r=>{r.button!=null&&r.button!==0||(n=!1,e.classList.add(`holding`),t=setTimeout(()=>{n=!0,_n=Date.now()+500,e.classList.remove(`holding`),e.classList.add(`long-pressed`),e.dataset.longpress===`add-qty`&&Cn(e.dataset.product),ir([12,30,12])},gn))}),e.addEventListener(`pointerup`,r),e.addEventListener(`pointerleave`,r),e.addEventListener(`pointercancel`,r),e.addEventListener(`click`,e=>{(n||Date.now()<_n)&&(e.preventDefault(),e.stopImmediatePropagation(),n=!1)},!0)})}function yn(){let e=I.items.reduce((e,t)=>e+t.qty,0),t=K.querySelector(`[data-view="lista"]`);t&&(t.innerHTML=`<span class="icon">📝</span>Lista ${e?`(${e})`:``}`)}function bn(e){let t=e.currentTarget;switch(t.dataset.action){case`set-view`:L=t.dataset.view,V=``,z=null,B=null,Zt();break;case`open-ticket`:B=t.dataset.ticket||null,V=``,q();break;case`close-ticket`:B=null,V=``,q();break;case`scan-ticket`:Ln();break;case`delete-ticket`:confirm(`¿Borrar este ticket?`)&&(I.tickets=(I.tickets||[]).filter(e=>e.id!==t.dataset.ticket),B===t.dataset.ticket&&(B=null),Y(),Z(`Ticket borrado`),q());break;case`open-history-day`:z=t.dataset.day||null,V=``,q();break;case`close-history-day`:z=null,V=``,q();break;case`set-category`:R=t.dataset.category||null,Ht=`all`,q();break;case`set-sub`:Ht=t.dataset.sub,q();break;case`jump-sub`:R=t.dataset.category,Ht=t.dataset.sub||`all`,V=``,q();break;case`clear-search`:V=``,Zt();break;case`toggle-product`:if(Date.now()<_n)break;xn(t.dataset.product);break;case`set-store-filter`:Ut=t.dataset.store,q();break;case`set-active-store`:H=t.dataset.store,localStorage.setItem(`compra:store`,H),Z(`Nuevos en ${N(H).name}`),q();break;case`cycle-store`:Tn(t.dataset.id);break;case`qty`:kn(t.dataset.id,Number(t.dataset.delta));break;case`add-custom`:Dn();break;case`add-custom-cat`:{let e=K.querySelector(`#custom-name-cat`);On(e?.value||``),e&&(e.value=``);break}case`clear-bought`:confirm(`¿Seguro que quieres vaciar toda la lista?`)&&(I.items=[],Y(),Z(`Lista vaciada`),q());break;case`clear-history`:confirm(`¿Vaciar todo el historial de compras?`)&&(I.history=[],z=null,Y(),Z(`Historial vaciado`),q());break;case`open-settings`:Qn(`settings`);break;case`open-help`:Qn(`help`);break;case`close-sheet`:X();break;default:break}}function xn(e){Sn(e,1)}function Sn(e,t){let n=Math.max(1,Math.min(99,Number(t)||1)),r=x(e);if(!r)return;let i=I.items.find(t=>t.productId===e&&t.store===H);i?i.qty+=n:I.items.unshift({id:crypto.randomUUID(),productId:e,name:r.name,emoji:r.emoji,icon:r.icon||null,qty:n,store:H,addedBy:I.member||``,addedAt:Date.now()}),Y(),Z(`＋${n} ${r.name} · ${N(H).name}`),ir(),q()}function Cn(e){let t=x(e);if(!t)return;let n=I.items.find(t=>t.productId===e&&t.store===H),r=I.items.filter(t=>t.productId===e).reduce((e,t)=>e+t.qty,0);U=2;let i=K.querySelector(`#overlay`);if(!i)return;i.innerHTML=`
     <div class="sheet qty-sheet">
