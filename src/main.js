@@ -1,12 +1,15 @@
 import './style.css'
 import {
   CATEGORIES,
-  PRODUCTS,
   searchProducts,
   getProductById,
   getProductsByCategory,
+  getProductsBySub,
   getCategory,
   groupProducts,
+  setExtraProducts,
+  upsertExtraProduct,
+  allProducts,
 } from './products.js'
 import { renderIcon, renderCategoryIcon } from './icons.js'
 import { STORES, getStore, storeOrder, storeLabel } from './stores.js'
@@ -20,6 +23,9 @@ import {
   pushRemote,
   saveMember,
   saveMembers,
+  applySyncFromUrl,
+  buildNfcLink,
+  DEFAULT_CLOUD_SYNC,
 } from './storage.js'
 import {
   parseReceiptText,
@@ -27,6 +33,7 @@ import {
   getPriceEntry,
   formatEuro,
   applyTicketPrices,
+  resolveTicketCatalog,
 } from './receipt.js'
 import {
   startCamera,
@@ -47,7 +54,9 @@ state.items = state.items.map((item) => ({
 }))
 if (!Array.isArray(state.history)) state.history = []
 if (!Array.isArray(state.tickets)) state.tickets = []
+if (!Array.isArray(state.extraProducts)) state.extraProducts = []
 if (!state.prices || typeof state.prices !== 'object') state.prices = {}
+setExtraProducts(state.extraProducts)
 let view = 'lista'
 let category = null // null = pasillos (rejilla)
 let subcategory = 'all'
@@ -82,9 +91,17 @@ const app = document.querySelector('#app')
 init()
 
 async function init() {
+  applySyncFromUrl()
   render()
   await syncPull()
   startSyncLoop()
+  // Al escanear la NFC el móvil abre/reabre la app → refrescar lista
+  window.addEventListener('pageshow', () => {
+    if (getSyncUrl()) syncPull()
+  })
+  window.addEventListener('focus', () => {
+    if (getSyncUrl()) syncPull()
+  })
   if (!state.member) {
     openSheet('member')
   }
@@ -330,11 +347,14 @@ function renderListItem(item) {
           </div>
         </div>
       </div>
-      <div class="buy-slide" data-buy-id="${escapeAttr(item.id)}">
-        <div class="buy-slide-fill"></div>
-        <span class="buy-slide-label">Desliza para comprar</span>
-        <span class="buy-slide-done">✓ Comprado</span>
-        <button class="buy-slide-knob" type="button" aria-label="Deslizar a la derecha para marcar comprado">›</button>
+      <div class="buy-row">
+        <div class="buy-slide" data-buy-id="${escapeAttr(item.id)}">
+          <div class="buy-slide-fill"></div>
+          <span class="buy-slide-label">Desliza para comprar</span>
+          <span class="buy-slide-done">✓ Comprado</span>
+          <button class="buy-slide-knob" type="button" aria-label="Deslizar a la derecha para marcar comprado">›</button>
+        </div>
+        <button class="buy-tap-btn" type="button" data-action="buy-item" data-id="${escapeAttr(item.id)}" aria-label="Marcar comprado">✓</button>
       </div>
     </article>
   `
@@ -404,7 +424,7 @@ function renderCategoryBrowse() {
           const count =
             s.id === 'all'
               ? getProductsByCategory(category).length
-              : PRODUCTS.filter((p) => p.category === category && p.sub === s.id).length
+              : getProductsBySub(category, s.id).length
           if (s.id !== 'all' && count === 0) return ''
           return `
           <button class="sub-chip ${subcategory === s.id ? 'active' : ''}" type="button" data-action="set-sub" data-sub="${s.id}">
@@ -483,7 +503,7 @@ function renderProductCard(product) {
   )
   const price = getPriceEntry(state.prices, product.id, product.name, activeStore)
   return `
-    <button class="product-card ${existing ? 'in-list' : ''}" type="button" data-action="toggle-product" data-product="${escapeAttr(product.id)}" data-longpress="add-qty" title="Toca: +1 · Mantén: cambiar cantidad">
+    <button class="product-card ${existing ? 'in-list' : ''}" type="button" data-action="toggle-product" data-product="${escapeAttr(product.id)}" data-longpress="add-qty" title="Toque: +1 · Mantener: elegir cantidad">
       <span class="product-icon">
         ${renderIcon(product, 'sm')}
         ${price ? `<span class="price-under">${escapeHtml(formatEuro(price.price))}</span>` : ''}
@@ -594,8 +614,10 @@ function softRerender() {
   updateNavCount()
 }
 
-const LONG_PRESS_MS = 480
+const LONG_PRESS_MS = 550
 let suppressProductClickUntil = 0
+let syncDirtyUntil = 0
+let buyGestureActive = false
 
 function bindLongPress() {
   app.querySelectorAll('[data-longpress]').forEach((el) => {
@@ -603,42 +625,60 @@ function bindLongPress() {
     el.dataset.lpBound = '1'
 
     let timer = null
-    let fired = false
+    let longPressed = false
+    let startX = 0
+    let startY = 0
 
-    const clear = () => {
+    const clearTimer = () => {
       if (timer) clearTimeout(timer)
       timer = null
       el.classList.remove('holding')
     }
 
-    const start = (e) => {
-      if (e.button != null && e.button !== 0) return
-      fired = false
-      el.classList.add('holding')
-      timer = setTimeout(() => {
-        fired = true
-        suppressProductClickUntil = Date.now() + 500
-        el.classList.remove('holding')
-        el.classList.add('long-pressed')
-        const action = el.dataset.longpress
-        if (action === 'add-qty') {
-          openQtySheet(el.dataset.product)
-        }
-        vibrate([12, 30, 12])
-      }, LONG_PRESS_MS)
-    }
+    el.addEventListener(
+      'pointerdown',
+      (e) => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return
+        longPressed = false
+        startX = e.clientX
+        startY = e.clientY
+        el.classList.add('holding')
+        clearTimer()
+        timer = setTimeout(() => {
+          longPressed = true
+          suppressProductClickUntil = Date.now() + 800
+          clearTimer()
+          el.classList.add('long-pressed')
+          if (el.dataset.product) openQtySheet(el.dataset.product)
+          vibrate([12, 30, 12])
+        }, LONG_PRESS_MS)
+      },
+      { passive: true },
+    )
 
-    el.addEventListener('pointerdown', start)
-    el.addEventListener('pointerup', clear)
-    el.addEventListener('pointerleave', clear)
-    el.addEventListener('pointercancel', clear)
+    el.addEventListener(
+      'pointermove',
+      (e) => {
+        if (!timer) return
+        if (Math.abs(e.clientX - startX) > 12 || Math.abs(e.clientY - startY) > 12) {
+          clearTimer()
+        }
+      },
+      { passive: true },
+    )
+
+    el.addEventListener('pointerup', clearTimer, { passive: true })
+    el.addEventListener('pointercancel', clearTimer, { passive: true })
+    el.addEventListener('pointerleave', clearTimer, { passive: true })
+
+    // Igual que +/− de la lista: el click burbujea y suma +1
     el.addEventListener(
       'click',
       (e) => {
-        if (fired || Date.now() < suppressProductClickUntil) {
+        if (longPressed || Date.now() < suppressProductClickUntil) {
           e.preventDefault()
           e.stopImmediatePropagation()
-          fired = false
+          longPressed = false
         }
       },
       true,
@@ -718,8 +758,9 @@ function onAction(e) {
       render()
       break
     case 'toggle-product':
+      // El +1 lo hace el toque en pointerup; el click solo si no hubo pointer (accesibilidad)
       if (Date.now() < suppressProductClickUntil) break
-      toggleProduct(btn.dataset.product)
+      addProductQty(btn.dataset.product, 1)
       break
     case 'set-store-filter': {
       storeFilter = btn.dataset.store
@@ -738,6 +779,9 @@ function onAction(e) {
       break
     case 'qty':
       changeQty(btn.dataset.id, Number(btn.dataset.delta))
+      break
+    case 'buy-item':
+      buyItem(btn.dataset.id)
       break
     case 'add-custom':
       openQuickAddSheet()
@@ -1060,40 +1104,23 @@ function addCustomProduct(name) {
   const trimmed = name.trim()
   if (!trimmed) return
 
-  const match = PRODUCTS.find(
+  const exact = allProducts().find(
     (p) => p.name.toLowerCase() === trimmed.toLowerCase(),
   )
-  if (match) {
-    toggleProduct(match.id)
+  if (exact) {
+    toggleProduct(exact.id)
     return
   }
 
-  const existing = state.items.find(
-    (i) => !i.productId && i.name.toLowerCase() === trimmed.toLowerCase() && i.store === activeStore,
-  )
-  if (existing) {
-    existing.qty += 1
-  } else {
-    state.items.unshift({
-      id: crypto.randomUUID(),
-      productId: null,
-      name: trimmed,
-      emoji: '🛒',
-      qty: 1,
-      store: activeStore,
-      addedBy: state.member || '',
-      addedAt: Date.now(),
-    })
-  }
-  persist()
-  showToast(`＋ ${trimmed} · ${getStore(activeStore).name}`)
-  vibrate()
+  const { list, product } = upsertExtraProduct(state.extraProducts, trimmed)
+  if (!product) return
+  state.extraProducts = list
+  setExtraProducts(state.extraProducts)
+  toggleProduct(product.id)
   if (view !== 'lista') {
     view = 'lista'
     query = ''
     render()
-  } else {
-    softRerender()
   }
 }
 
@@ -1128,7 +1155,8 @@ function bindBuySliders() {
     let maxX = 0
     let currentX = 0
     let completed = false
-    const END = 0.97 // solo al llegar casi al borde derecho
+    let pointerId = null
+    const END = 0.92
 
     const knubSize = () => knob.offsetWidth || 42
     const measure = () => Math.max(0, slide.clientWidth - knubSize() - 6)
@@ -1151,6 +1179,7 @@ function bindBuySliders() {
     const finish = () => {
       if (completed) return
       completed = true
+      buyGestureActive = false
       apply(maxX, true)
       slide.classList.add('complete')
       vibrate([10, 40, 10])
@@ -1159,43 +1188,52 @@ function bindBuySliders() {
 
     const onDown = (e) => {
       if (completed) return
+      if (e.pointerType === 'mouse' && e.button !== 0) return
       dragging = true
+      buyGestureActive = true
+      pointerId = e.pointerId
       maxX = measure()
       startX = e.clientX - currentX
       try {
-        knob.setPointerCapture(e.pointerId)
+        slide.setPointerCapture(e.pointerId)
       } catch {
-        /* ignore */
+        try {
+          knob.setPointerCapture(e.pointerId)
+        } catch {
+          /* ignore */
+        }
       }
       e.preventDefault()
     }
 
     const onMove = (e) => {
       if (!dragging || completed) return
+      if (pointerId != null && e.pointerId !== pointerId) return
       apply(e.clientX - startX)
-      // Solo completa al llegar al final real, no a mitad de camino
       if (maxX > 0 && currentX >= maxX * END) finish()
     }
 
-    const onUp = () => {
+    const onUp = (e) => {
       if (!dragging) return
+      if (pointerId != null && e.pointerId != null && e.pointerId !== pointerId) return
       dragging = false
+      pointerId = null
+      buyGestureActive = false
       if (completed) return
       if (maxX > 0 && currentX >= maxX * END) finish()
       else reset()
     }
 
-    knob.addEventListener('pointerdown', onDown)
-    knob.addEventListener('pointermove', onMove)
-    knob.addEventListener('pointerup', onUp)
-    knob.addEventListener('pointercancel', onUp)
+    // Escuchar en el carril entero (más fiable en móvil que solo el knob)
+    slide.addEventListener('pointerdown', onDown, { passive: false })
+    slide.addEventListener('pointermove', onMove, { passive: false })
+    slide.addEventListener('pointerup', onUp)
+    slide.addEventListener('pointercancel', onUp)
     knob.addEventListener('click', (e) => e.preventDefault())
   })
 }
 
 function buyItem(id) {
-  const row = app.querySelector(`.list-item[data-id="${CSS.escape(id)}"]`)
-  if (row) row.classList.add('buying')
   const item = state.items.find((i) => i.id === id)
   if (!item) return
   const product = item.productId ? getProductById(item.productId) : null
@@ -1211,13 +1249,16 @@ function buyItem(id) {
     boughtBy: state.member || '',
     boughtAt: Date.now(),
   }
-  setTimeout(() => {
-    state.history = [entry, ...(state.history || [])].slice(0, 2000)
-    state.items = state.items.filter((i) => i.id !== id)
-    persist()
-    showToast(`✓ Comprado: ${name}`)
-    softRerender()
-  }, 280)
+
+  // Guardar YA (antes el delay de animación hacía que la sync del PC lo pisara)
+  state.history = [entry, ...(state.history || [])].slice(0, 2000)
+  state.items = state.items.filter((i) => i.id !== id)
+  persist()
+
+  const row = app.querySelector(`.list-item[data-id="${CSS.escape(id)}"]`)
+  if (row) row.classList.add('buying')
+  showToast(`✓ Comprado: ${name}`)
+  setTimeout(() => softRerender(), 220)
 }
 
 function renderHistorial() {
@@ -1413,18 +1454,36 @@ function renderTicketDetail(id) {
         </div>
       </div>
     </div>
-    <div class="history-entries">
-      ${(ticket.items || [])
-        .map(
-          (line) => `
-        <article class="history-item" style="--store:${store.brand}">
-          <div class="item-info" style="padding-left:2px">
-            <strong>${escapeHtml(line.name)}${line.qty > 1 ? ` <em class="history-qty">×${line.qty}</em>` : ''}</strong>
-            <span>${escapeHtml(formatEuro(line.price))}</span>
-          </div>
-        </article>`,
-        )
-        .join('')}
+    <div class="receipt-paper receipt-paper--saved">
+      <div class="receipt-head">
+        <strong>${escapeHtml(store.name)}</strong>
+        <span>${escapeHtml(formatDayLabel(dayKey(ticket.boughtAt)))}</span>
+      </div>
+      <div class="receipt-sep">····························</div>
+      <div class="receipt-body">
+        ${(ticket.items || [])
+          .map((line) => {
+            const product = line.productId ? getProductById(line.productId) : matchCatalogProduct(line.name)
+            const visual = product
+              ? { emoji: product.emoji, icon: product.icon, name: product.name }
+              : { emoji: line.emoji || '🛒', icon: null, name: line.name }
+            return `
+          <div class="receipt-row receipt-row--static">
+            <span class="receipt-ico">${renderIcon(visual, 'sm')}</span>
+            <span class="receipt-name-text">${escapeHtml(line.name)}${
+              line.qty > 1 ? ` ×${line.qty}` : ''
+            }</span>
+            <span class="receipt-lead" aria-hidden="true"></span>
+            <span class="receipt-price-text">${escapeHtml(formatEuro(line.price))}</span>
+          </div>`
+          })
+          .join('')}
+      </div>
+      <div class="receipt-sep">····························</div>
+      <div class="receipt-foot">
+        <span>TOTAL</span>
+        <strong>${escapeHtml(formatEuro(ticket.total || 0))}</strong>
+      </div>
     </div>
     <div class="custom-row">
       <button class="danger-btn" type="button" data-action="delete-ticket" data-ticket="${escapeAttr(ticket.id)}" style="width:100%">Borrar ticket</button>
@@ -1532,20 +1591,13 @@ async function runTicketScan(video, statusEl) {
 }
 
 function enrichTicketDraft(parsed) {
-  const items = (parsed.items || []).map((line) => {
-    const product = matchCatalogProduct(line.name)
-    return {
-      name: product?.name || line.name,
-      productId: product?.id || null,
-      qty: line.qty || 1,
-      price: line.price,
-    }
-  })
+  const resolved = resolveTicketCatalog(state.extraProducts, parsed.items || [])
   return {
     id: crypto.randomUUID(),
     store: parsed.store || 'todos',
     total: parsed.total,
-    items,
+    items: resolved.items,
+    extrasPreview: resolved.extras,
     rawText: parsed.rawText || '',
     boughtAt: Date.now(),
     scannedBy: state.member || '',
@@ -1558,10 +1610,10 @@ function openTicketReview(draft) {
   const store = getStore(draft.store)
 
   overlay.innerHTML = `
-    <div class="sheet">
+    <div class="sheet ticket-review-sheet">
       <button class="sheet-close" type="button" data-action="close-sheet" aria-label="Cerrar">✕</button>
       <h2>Revisar ticket</h2>
-      <p>Supermercado detectado: <strong>${escapeHtml(store.name)}</strong>. Los precios se guardan solo para ese súper. Comprueba y guarda.</p>
+      <p>Comprueba líneas y precios. Al guardar se actualizan precios y se añaden productos nuevos al catálogo.</p>
       <label for="ticket-store">Supermercado</label>
       <div class="store-select-wrap" style="--store:${store.brand}">
         <span class="store-select-dot" aria-hidden="true"></span>
@@ -1572,18 +1624,37 @@ function openTicketReview(draft) {
           ).join('')}
         </select>
       </div>
-      <div class="ticket-lines" id="ticket-lines">
-        ${draft.items
-          .map(
-            (line, idx) => `
-          <div class="ticket-line" data-idx="${idx}">
-            <input class="ticket-name" type="text" value="${escapeAttr(line.name)}" maxlength="80" />
-            <input class="ticket-price" type="text" inputmode="decimal" value="${escapeAttr(String(line.price).replace('.', ','))}" />
-          </div>`,
-          )
-          .join('')}
+      <div class="receipt-paper" id="ticket-receipt">
+        <div class="receipt-head">
+          <strong id="receipt-store-name">${escapeHtml(store.name)}</strong>
+          <span>borrador</span>
+        </div>
+        <div class="receipt-sep">····························</div>
+        <div class="receipt-body" id="ticket-lines">
+          ${draft.items
+            .map((line, idx) => {
+              const visual = {
+                emoji: line.emoji || '🛒',
+                icon: line.icon || null,
+                name: line.name,
+              }
+              return `
+            <div class="receipt-row ticket-line${line.isNew ? ' receipt-row--new' : ''}" data-idx="${idx}" data-qty="${escapeAttr(String(line.qty || 1))}">
+              <span class="receipt-ico">${renderIcon(visual, 'sm')}</span>
+              <input class="ticket-name receipt-name" type="text" value="${escapeAttr(line.name)}" maxlength="80" aria-label="Producto" />
+              ${line.isNew ? '<span class="receipt-new">nuevo</span>' : ''}
+              <span class="receipt-lead" aria-hidden="true"></span>
+              <input class="ticket-price receipt-price" type="text" inputmode="decimal" value="${escapeAttr(String(line.price).replace('.', ','))}" aria-label="Precio" />
+            </div>`
+            })
+            .join('')}
+        </div>
+        <div class="receipt-sep">····························</div>
+        <div class="receipt-foot">
+          <span>TOTAL</span>
+          <strong id="ticket-total">${escapeHtml(formatEuro(draft.total || 0))}</strong>
+        </div>
       </div>
-      <p class="ticket-total-line">Total estimado: <strong id="ticket-total">${escapeHtml(formatEuro(draft.total || 0))}</strong></p>
       <div class="sheet-actions">
         <button class="secondary-btn" type="button" id="rescan-ticket">Volver a escanear</button>
         <button class="primary-btn" type="button" id="save-ticket">Guardar ticket</button>
@@ -1597,6 +1668,8 @@ function openTicketReview(draft) {
   storeSelect.addEventListener('change', () => {
     const s = getStore(storeSelect.value)
     wrap.style.setProperty('--store', s.brand)
+    const nameEl = overlay.querySelector('#receipt-store-name')
+    if (nameEl) nameEl.textContent = s.name
   })
 
   const syncTotal = () => {
@@ -1614,48 +1687,60 @@ function openTicketReview(draft) {
     openTicketScanner()
   })
   overlay.querySelector('#save-ticket').addEventListener('click', () => {
-    const items = [...overlay.querySelectorAll('.ticket-line')]
+    const storeId = storeSelect.value || 'todos'
+    if (!storeId || storeId === 'todos') {
+      showToast('Elige el supermercado del ticket')
+      return
+    }
+
+    const rawItems = [...overlay.querySelectorAll('.ticket-line')]
       .map((row) => {
         const name = row.querySelector('.ticket-name').value.trim()
         const price = Number(String(row.querySelector('.ticket-price').value).replace(',', '.'))
-        const product = matchCatalogProduct(name)
+        const qty = Math.max(1, Number(row.dataset.qty) || 1)
         return {
-          name: product?.name || name,
-          productId: product?.id || null,
-          qty: 1,
+          name,
+          qty,
           price: Number.isFinite(price) ? Math.round(price * 100) / 100 : 0,
         }
       })
       .filter((i) => i.name && i.price > 0)
 
-    if (!items.length) {
+    if (!rawItems.length) {
       showToast('No hay líneas válidas')
       return
     }
 
+    const resolved = resolveTicketCatalog(state.extraProducts, rawItems)
+    const newCount = resolved.items.filter((i) => i.isNew).length
+    state.extraProducts = resolved.extras
+    setExtraProducts(state.extraProducts)
+
     const ticket = {
       id: draft.id || crypto.randomUUID(),
-      store: storeSelect.value || 'todos',
+      store: storeId,
       total: syncTotal(),
-      items,
+      items: resolved.items.map(({ name, productId, qty, price, emoji }) => ({
+        name,
+        productId,
+        qty,
+        price,
+        emoji,
+      })),
       boughtAt: Date.now(),
       scannedBy: state.member || '',
     }
     state.tickets = [ticket, ...(state.tickets || [])].slice(0, 200)
-    if (ticket.store && ticket.store !== 'todos') {
-      state.prices = applyTicketPrices(state.prices, ticket)
-    }
+    state.prices = applyTicketPrices(state.prices, ticket)
     persist()
     closeSheet()
     view = 'tickets'
     ticketDetail = ticket.id
     query = ''
     render()
-    showToast(
-      ticket.store && ticket.store !== 'todos'
-        ? `Ticket ${getStore(ticket.store).name} · precios actualizados`
-        : `Ticket guardado · elige supermercado para precios`,
-    )
+    const bits = [`precios ${getStore(ticket.store).name}`]
+    if (newCount) bits.push(`${newCount} producto${newCount === 1 ? '' : 's'} nuevo${newCount === 1 ? '' : 's'}`)
+    showToast(`Ticket guardado · ${bits.join(' · ')}`)
   })
 }
 
@@ -1728,6 +1813,7 @@ function formatTimeOnly(ts) {
 
 function persist() {
   state.updatedAt = Date.now()
+  syncDirtyUntil = Date.now() + 3000
   saveLocal(listId, state)
   saveMembers(state.members)
   queuePush()
@@ -1737,10 +1823,14 @@ let pushQueued = null
 function queuePush() {
   if (!getSyncUrl()) return
   clearTimeout(pushQueued)
-  pushQueued = setTimeout(() => syncPush(), 400)
+  // Empujar enseguida para que el móvil no pierda el producto
+  pushQueued = setTimeout(() => syncPush(), 80)
 }
 
 async function syncPull() {
+  // No pisar gestos del móvil ni cambios recién guardados
+  if (buyGestureActive || pushing || Date.now() < syncDirtyUntil) return
+
   const remote = await pullRemote(listId)
   if (!remote) {
     setSyncStatus(false)
@@ -1753,6 +1843,10 @@ async function syncPull() {
     state.tickets = Array.isArray(remote.tickets) ? remote.tickets : state.tickets || []
     state.prices =
       remote.prices && typeof remote.prices === 'object' ? remote.prices : state.prices || {}
+    state.extraProducts = Array.isArray(remote.extraProducts)
+      ? remote.extraProducts
+      : state.extraProducts || []
+    setExtraProducts(state.extraProducts)
     if (remote.members?.length) state.members = remote.members
     state.updatedAt = remote.updatedAt
     saveLocal(listId, state)
@@ -1763,8 +1857,15 @@ async function syncPull() {
 async function syncPush() {
   if (pushing || !getSyncUrl()) return
   pushing = true
-  const ok = await pushRemote(listId, state)
-  setSyncStatus(ok)
+  const result = await pushRemote(listId, state)
+  if (result === 'ok') {
+    syncDirtyUntil = 0
+  }
+  if (result === 'conflict') {
+    syncDirtyUntil = 0
+    await syncPull()
+  }
+  setSyncStatus(result === 'ok' || result === 'conflict')
   pushing = false
 }
 
@@ -1845,8 +1946,8 @@ function openSheet(type) {
         <label>Código de lista (URL NFC)</label>
         <input id="set-list" type="text" maxlength="40" value="${escapeAttr(listId)}" />
         <label>URL de sincronización</label>
-        <input id="set-sync" type="url" placeholder="${escapeAttr(window.location.origin + '/api')}" value="${escapeAttr(url)}" />
-        <p style="font-size:0.82rem;margin-top:8px">Con <code>npm run start</code> usa la API del mismo servidor. También puedes pegar una URL de Firebase Realtime Database.</p>
+        <input id="set-sync" type="url" placeholder="${escapeAttr(DEFAULT_CLOUD_SYNC)}" value="${escapeAttr(url)}" />
+        <p style="font-size:0.82rem;margin-top:8px">Ya está configurada la nube (Firebase). Funciona en casa y fuera, con WiFi o datos.</p>
 
         <div class="install-box">
           <strong>Instalar en el móvil</strong>
@@ -1902,31 +2003,35 @@ function openSheet(type) {
       }
       closeSheet()
       render()
-      showToast(sync ? 'Sincronización activada' : 'Ajustes guardados')
+      showToast(getSyncUrl() ? 'Sincronización activada' : 'Ajustes guardados · sync desactivada')
       startSyncLoop()
-      syncPull()
+      if (getSyncUrl()) syncPull()
     })
     return
   }
 
   if (type === 'help') {
     const link = nfcLink()
+    const syncOn = Boolean(getSyncUrl())
     overlay.innerHTML = `
       <div class="sheet">
-        <h2>Pegatina NFC en la nevera</h2>
-        <p>Cada miembro de la familia acerca el móvil a la pegatina y se abre esta lista al instante.</p>
+        <h2>Pegatina NFC</h2>
+        <p>La pegatina guarda un enlace a la app en internet. Al escanear, abre la lista y <strong>actualiza en la nube</strong> (casa o fuera).</p>
         <ol class="help-steps">
-          <li>En el PC: <code>npm run start</code> (sirve la app + sincronización familiar).</li>
-          <li>Abre en el móvil la IP de ese PC, p. ej. <code>http://192.168.1.20:4173/?lista=familia</code>.</li>
-          <li>Copia el enlace de abajo y grábalo en la pegatina con NFC Tools.</li>
-          <li>Pega la pegatina en la nevera. Cada scan abre la misma lista.</li>
+          <li>Copia el enlace de abajo.</li>
+          <li>En <strong>NFC Tools</strong> → Escribir → URL/URI → pega el enlace → acerca la pegatina.</li>
+          <li>Pégala en la nevera. Listo.</li>
         </ol>
+        ${
+          syncOn
+            ? `<p class="install-status">✓ Sync en la nube activa</p>`
+            : `<p class="install-status">⚠ Sin sync — revisa Ajustes</p>`
+        }
         <div class="code-box" id="nfc-link">${escapeHtml(link)}</div>
         <div class="sheet-actions">
           <button class="secondary-btn" type="button" data-action="close-sheet">Cerrar</button>
-          <button class="primary-btn" type="button" id="copy-nfc">Copiar enlace</button>
+          <button class="primary-btn" type="button" id="copy-nfc">Copiar enlace NFC</button>
         </div>
-        <p style="margin-top:14px;font-size:0.85rem">Flujo típico: alguien ve que falta leche → toca NFC → añade Leche → al comprar, <strong>desliza el círculo</strong> a la derecha y desaparece.</p>
       </div>
     `
     overlay.classList.add('open')
@@ -1946,10 +2051,7 @@ function closeSheet() {
 }
 
 function nfcLink() {
-  const u = new URL(window.location.href)
-  u.searchParams.set('lista', listId)
-  u.hash = ''
-  return u.toString()
+  return buildNfcLink(listId)
 }
 
 async function copyNfcLink() {

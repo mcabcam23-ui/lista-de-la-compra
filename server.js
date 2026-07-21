@@ -31,7 +31,17 @@ app.use(express.json({ limit: '1mb' }))
 app.get('/api/lists/:id', (req, res) => {
   const all = readAll()
   const list = all[req.params.id]
-  if (!list) return res.json({ items: [], history: [], tickets: [], prices: {}, members: [], updatedAt: 0 })
+  if (!list) {
+    return res.json({
+      items: [],
+      history: [],
+      tickets: [],
+      prices: {},
+      extraProducts: [],
+      members: [],
+      updatedAt: 0,
+    })
+  }
   res.json(list)
 })
 
@@ -40,7 +50,7 @@ app.put('/api/lists/:id', (req, res) => {
   const incoming = req.body || {}
   const current = all[req.params.id]
   if (current && (incoming.updatedAt || 0) < (current.updatedAt || 0)) {
-    return res.json(current)
+    return res.status(409).json(current)
   }
   const next = {
     items: Array.isArray(incoming.items) ? incoming.items : [],
@@ -60,6 +70,11 @@ app.put('/api/lists/:id', (req, res) => {
         : current?.prices && typeof current.prices === 'object'
           ? current.prices
           : {},
+    extraProducts: Array.isArray(incoming.extraProducts)
+      ? incoming.extraProducts
+      : Array.isArray(current?.extraProducts)
+        ? current.extraProducts
+        : [],
     members: Array.isArray(incoming.members) ? incoming.members : [],
     updatedAt: incoming.updatedAt || Date.now(),
   }

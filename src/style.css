@@ -497,6 +497,30 @@ button {
 }
 
 /* Deslizar para comprar */
+.buy-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.buy-tap-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  border: 1px solid #b7e0c6;
+  background: #e8f7ee;
+  color: var(--brand);
+  font-size: 1.25rem;
+  font-weight: 800;
+  touch-action: manipulation;
+}
+
+.buy-tap-btn:active {
+  transform: scale(0.96);
+  background: #d4f0df;
+}
+
 .buy-slide {
   --slide-x: 0px;
   position: relative;
@@ -632,6 +656,10 @@ button {
 }
 
 .product-card {
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
   min-width: 0;
   width: 100%;
   aspect-ratio: auto;
@@ -1865,6 +1893,188 @@ button {
   z-index: 2;
 }
 
+.ticket-review-sheet {
+  max-height: min(94dvh, 900px);
+}
+
+.receipt-paper {
+  margin-top: 12px;
+  padding: 14px 14px 16px;
+  border-radius: 6px;
+  background:
+    linear-gradient(180deg, #fffdf8 0%, #f4efe3 100%);
+  color: #1c1a16;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.7) inset,
+    0 10px 28px rgba(40, 28, 10, 0.12);
+  font-family: "IBM Plex Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  max-height: 46dvh;
+  overflow: auto;
+}
+
+.receipt-paper--saved {
+  max-height: none;
+  margin-top: 8px;
+}
+
+.receipt-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.receipt-head strong {
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+}
+
+.receipt-sep {
+  margin: 8px 0;
+  color: #8a8170;
+  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-align: center;
+  user-select: none;
+}
+
+.receipt-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.receipt-row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 10px auto;
+  align-items: center;
+  gap: 4px 6px;
+  min-height: 40px;
+  padding: 2px 0;
+}
+
+.receipt-row--new,
+.receipt-row:has(.receipt-new) {
+  grid-template-columns: 36px minmax(0, 1fr) auto 10px auto;
+}
+
+.receipt-row--static {
+  grid-template-columns: 36px minmax(0, 1fr) 10px auto;
+  min-height: 44px;
+}
+
+.receipt-ico {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.receipt-ico .pack-svg,
+.receipt-ico .emoji-badge {
+  width: 32px !important;
+  height: 32px !important;
+  font-size: 1.05rem !important;
+}
+
+.receipt-name,
+.receipt-price {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  height: auto;
+  padding: 4px 0;
+  color: inherit;
+  font: inherit;
+}
+
+.receipt-name {
+  min-width: 0;
+  width: 100%;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+  letter-spacing: 0.01em;
+}
+
+.receipt-price {
+  width: 4.6rem;
+  text-align: right;
+  font-weight: 700;
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.receipt-name:focus,
+.receipt-price:focus {
+  outline: none;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 1px 0 #1c1a16;
+}
+
+.receipt-lead {
+  width: 10px;
+  align-self: end;
+  margin-bottom: 8px;
+  border-bottom: 1px dotted #9a9080;
+  min-width: 8px;
+  flex: 1;
+}
+
+.receipt-row--static .receipt-lead {
+  width: auto;
+  min-width: 12px;
+  margin-bottom: 10px;
+}
+
+.receipt-name-text {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+.receipt-price-text {
+  font-weight: 700;
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.receipt-new {
+  font-size: 0.58rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #2e7d32;
+  background: rgba(46, 125, 50, 0.12);
+  padding: 2px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.receipt-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.receipt-foot strong {
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .ticket-lines {
   display: flex;
   flex-direction: column;
@@ -1892,6 +2102,28 @@ button {
 .ticket-total-line {
   margin: 12px 0 0;
   font-size: 0.95rem;
+}
+
+.receipt-paper .ticket-line {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 10px auto;
+  gap: 4px 6px;
+  background: transparent;
+  border: none;
+}
+
+.receipt-paper .ticket-line.receipt-row--new,
+.receipt-paper .ticket-line:has(.receipt-new) {
+  grid-template-columns: 36px minmax(0, 1fr) auto 10px auto;
+}
+
+.receipt-paper .ticket-line input.ticket-name,
+.receipt-paper .ticket-line input.ticket-price {
+  height: auto;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 4px 0;
 }
 
 

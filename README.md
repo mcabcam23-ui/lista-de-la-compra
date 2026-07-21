@@ -1,49 +1,45 @@
 # Lista de la compra
 
-App familiar de lista de la compra pensada para pegatina NFC en la nevera: alguien toca el tag, abre la URL compartida y apunta lo que falta.
+App familiar de lista de la compra para pegatina NFC en la nevera.
 
-## Abrir la app
+## Abrir ya (sin instalar)
 
-**Página web:** https://mcabcam23-ui.github.io/lista-de-la-compra/?lista=familia
+https://mcabcam23-ui.github.io/lista-de-la-compra/?lista=familia  
 
-Ese es el enlace para el móvil / pegatina NFC (no el de GitHub).
+(En Pages cada móvil guarda su lista. Para familia en tiempo real, usa el modo nevera de abajo.)
 
-## Características
+## Pegatina NFC (lo más fácil)
 
-- Lista compartida por URL (`?lista=familia`)
-- Catálogo por pasillos y subcategorías
-- Producto rápido con elección de supermercado
-- Filtro por súper (Mercadona, LIDL, Alimerka, Alcampo, Carrefour, Familia, TODOS)
-- Deslizar para confirmar compra
-- Historial de compras por días
-- PWA instalable
+La pegatina **no guarda la lista** (casi no tiene memoria). Guarda un **enlace**. Al escanear: abre la app y **actualiza sola**.
 
-## Uso en local (sincronización familiar)
-
+1. En el PC (misma WiFi):
 ```bash
 npm install
 npm run start
 ```
+2. En el móvil abre `http://IP_DEL_PC:4173/?lista=familia`  
+   (Windows: `ipconfig` → IPv4, ej. `192.168.1.129`)
+3. En la app → Ayuda → **Copiar enlace NFC**
+4. Grábalo con **NFC Tools** → Escribir → URL
+5. Pega la pegatina en la nevera
 
-Abre en el móvil (misma WiFi) la IP del PC, por ejemplo:
+Cada scan = lista al día en todos los móviles de casa (el PC debe estar encendido con `npm run start`).
 
-`http://192.168.1.20:4173/?lista=familia`
+## Características
 
-En GitHub Pages la lista se guarda en cada móvil. Para sincronizar entre móviles en casa, usa `npm run start` en el PC o configura Firebase en Ajustes.
-
-## Desarrollo
-
-```bash
-npm run dev
-```
-
-Vite en `5173` (proxy `/api` → Express en `4173`).
+- Lista compartida (`?lista=familia`)
+- Catálogo por pasillos, tickets OCR, precios por súper
+- Deslizar para comprar + historial
+- PWA instalable
 
 ## Scripts
 
 | Comando | Descripción |
 | --- | --- |
-| `npm run dev` | Servidor API + Vite |
-| `npm run build` | Build de producción |
-| `npm run start` | Build + servir `dist` + API |
-| `npm run server` | Solo API / estáticos |
+| `npm run start` | Build + app + sync (puerto 4173) |
+| `npm run dev` | Desarrollo (Vite + API) |
+| `npm run build` | Solo generar `dist/` |
+
+## Sync en la nube (sin PC)
+
+En Ajustes puedes pegar una URL de Firebase Realtime Database. El enlace NFC incluirá esa sync: al escanear, cada móvil se configura solo.

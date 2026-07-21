@@ -1,8 +1,10 @@
-import { PRODUCTS } from './products.js'
+import { PRODUCTS, allProducts, upsertExtraProduct } from './products.js'
 import { STORES } from './stores.js'
 
 const SKIP =
-  /^(total|subtotal|sub total|iva|base|tarjeta|efectivo|cambio|gracias|ticket|factura|nif|cif|dto|dto\.|descuento|importe|pagado|vuelto|operacion|op\.|caja|tienda|tel|www\.|http|mercado|cliente|vendedor|fecha|hora|n[ºo°]|articulos?|uds?\.?)$/i
+  /^(total|subtotal|sub total|iva|base|tarjeta|efectivo|cambio|gracias|ticket|factura|nif|cif|dto|dto\.|descuento|importe|pagado|vuelto|operacion|op\.|caja|tienda|tel|www\.|http|mercado|cliente|vendedor|fecha|hora|n[ºo°]|articulos?|uds?\.?|eur|euro|euros|cantidad|precio|pvp|ref)$/i
+
+const PRICE_RE = /(\d+[.,]\d{2})\s*[€eE]?/
 
 export function normalizeText(value) {
   return String(value || '')
@@ -15,17 +17,20 @@ export function normalizeText(value) {
 }
 
 export function parseReceiptText(rawText) {
-  const lines = String(rawText || '')
+  const rawLines = String(rawText || '')
     .split(/\r?\n/)
-    .map((l) => l.replace(/\s+/g, ' ').trim())
+    .map((l) => l.replace(/[·•]/g, '.').replace(/\.{2,}/g, ' ').replace(/\s+/g, ' ').trim())
     .filter(Boolean)
 
+  const lines = coalesceBrokenLines(rawLines)
   const store = detectStore(lines)
   const items = []
   let total = null
 
   for (const line of lines) {
-    const totalMatch = line.match(/^(?:total|importe|a pagar)\s*:?\s*(\d+[.,]\d{2})\s*[€eE]?$/i)
+    const totalMatch = line.match(
+      /^(?:total|importe|a pagar|total a pagar)\s*:?\s*(\d+[.,]\d{2})\s*[€eE]?$/i,
+    )
     if (totalMatch) {
       total = parseMoney(totalMatch[1])
       continue
@@ -33,8 +38,10 @@ export function parseReceiptText(rawText) {
 
     const item = parseItemLine(line)
     if (!item) continue
-    if (SKIP.test(normalizeText(item.name).split(' ')[0] || '')) continue
-    if (item.name.length < 3) continue
+    const first = normalizeText(item.name).split(' ')[0] || ''
+    if (SKIP.test(first)) continue
+    if (normalizeText(item.name).length < 3) continue
+    if (!item.price || item.price <= 0 || item.price > 500) continue
     items.push(item)
   }
 
@@ -47,17 +54,67 @@ export function parseReceiptText(rawText) {
   }
 }
 
+/** Une “NOMBRE” + “1,25” en líneas separadas (muy habitual en OCR) */
+function coalesceBrokenLines(lines) {
+  const out = []
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const next = lines[i + 1]
+    if (next && !PRICE_RE.test(line) && isPriceOnly(next) && looksLikeProductName(line)) {
+      out.push(`${line} ${next}`)
+      i += 1
+      continue
+    }
+    if (
+      next &&
+      looksLikeProductName(line) &&
+      !PRICE_RE.test(line) &&
+      /^\d+\s+[A-Za-zÁÉÍÓÚÑáéíóúñ]/.test(next) === false &&
+      PRICE_RE.test(next) &&
+      next.length < 28
+    ) {
+      const pricePart = next.match(PRICE_RE)
+      if (pricePart && !looksLikeProductName(next.replace(PRICE_RE, '').trim())) {
+        out.push(`${line} ${pricePart[1]}`)
+        i += 1
+        continue
+      }
+    }
+    out.push(line)
+  }
+  return out
+}
+
+function isPriceOnly(line) {
+  return /^\d+[.,]\d{2}\s*[€eE]?$/.test(String(line).trim())
+}
+
+function looksLikeProductName(line) {
+  const t = String(line || '').trim()
+  if (t.length < 3 || t.length > 60) return false
+  if (isPriceOnly(t)) return false
+  if (/^(total|iva|nif|cif|fecha|hora)/i.test(t)) return false
+  return /[A-Za-zÁÉÍÓÚÑáéíóúñ]{2,}/.test(t)
+}
+
 function parseItemLine(line) {
-  // "LECHE ENTERA 1,25" · "1,25 LECHE" · "LECHE x2 2,50"
-  let m = line.match(/^(.+?)\s+(\d+[.,]\d{2})\s*[€eE]?$/)
-  if (m) {
+  const cleaned = String(line || '')
+    .replace(/\s*[€eE]\s*$/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  // "LECHE ENTERA 1,25" · "LECHE ..... 1,25"
+  let m = cleaned.match(/^(.+?)\s+(\d+[.,]\d{2})$/)
+  if (m && !isPriceOnly(m[1])) {
     return {
       name: cleanName(m[1]),
       price: parseMoney(m[2]),
       qty: extractQty(m[1]) || 1,
     }
   }
-  m = line.match(/^(\d+[.,]\d{2})\s*[€eE]?\s+(.+)$/)
+
+  // "1,25 LECHE ENTERA"
+  m = cleaned.match(/^(\d+[.,]\d{2})\s+(.+)$/)
   if (m) {
     return {
       name: cleanName(m[2]),
@@ -65,7 +122,9 @@ function parseItemLine(line) {
       qty: extractQty(m[2]) || 1,
     }
   }
-  m = line.match(/^(.+?)\s+x\s*(\d+)\s+(\d+[.,]\d{2})\s*[€eE]?$/i)
+
+  // "LECHE x2 2,50" · "LECHE x 2 2,50"
+  m = cleaned.match(/^(.+?)\s+x\s*(\d+)\s+(\d+[.,]\d{2})$/i)
   if (m) {
     return {
       name: cleanName(m[1]),
@@ -73,6 +132,17 @@ function parseItemLine(line) {
       price: parseMoney(m[3]),
     }
   }
+
+  // "2 LECHE ENTERA 2,50"
+  m = cleaned.match(/^(\d+)\s+(.+?)\s+(\d+[.,]\d{2})$/)
+  if (m) {
+    return {
+      name: cleanName(m[2]),
+      qty: Number(m[1]) || 1,
+      price: parseMoney(m[3]),
+    }
+  }
+
   return null
 }
 
@@ -80,7 +150,8 @@ function cleanName(name) {
   return String(name || '')
     .replace(/\s*x\s*\d+\s*$/i, '')
     .replace(/\s{2,}/g, ' ')
-    .replace(/^[\d*\-_.]+/, '')
+    .replace(/^[\d*\-_.#]+/, '')
+    .replace(/\s+\d+[.,]\d{2}\s*$/, '')
     .trim()
 }
 
@@ -106,7 +177,7 @@ function dedupeItems(items) {
     if (map.has(key)) {
       const prev = map.get(key)
       prev.qty += item.qty || 1
-      prev.price = item.price
+      prev.price = Math.round((prev.price + (item.price || 0)) * 100) / 100
     } else {
       map.set(key, { ...item, qty: item.qty || 1 })
     }
@@ -147,30 +218,46 @@ function detectStore(lines) {
   return 'todos'
 }
 
-export function matchCatalogProduct(name) {
+export function matchCatalogProduct(name, pool) {
   const needle = normalizeText(name)
   if (!needle) return null
+  const products = Array.isArray(pool) ? pool : allProducts()
+
+  // Nombres muy cortos: solo coincidencia exacta
+  if (needle.length < 3) {
+    return products.find((p) => normalizeText(p.name) === needle) || null
+  }
+
   let best = null
   let bestScore = 0
-  for (const product of PRODUCTS) {
+  for (const product of products) {
     const target = normalizeText(product.name)
     if (!target) continue
     let score = 0
     if (target === needle) score = 1
-    else if (target.includes(needle) || needle.includes(target)) score = 0.86
-    else {
-      const a = new Set(needle.split(' '))
-      const b = new Set(target.split(' '))
-      let inter = 0
-      for (const w of a) if (b.has(w)) inter += 1
-      score = inter / Math.max(a.size, b.size)
+    else if (needle.length >= 4 && target.length >= 4) {
+      if (target.includes(needle) || needle.includes(target)) {
+        const shorter = Math.min(needle.length, target.length)
+        const longer = Math.max(needle.length, target.length)
+        score = 0.68 + 0.22 * (shorter / longer)
+      }
+    }
+    if (score < 0.9) {
+      const a = new Set(needle.split(' ').filter((w) => w.length > 2))
+      const b = new Set(target.split(' ').filter((w) => w.length > 2))
+      if (a.size && b.size) {
+        let inter = 0
+        for (const w of a) if (b.has(w)) inter += 1
+        const jaccard = inter / Math.max(a.size, b.size)
+        if (jaccard > score) score = jaccard * 0.95
+      }
     }
     if (score > bestScore) {
       bestScore = score
       best = product
     }
   }
-  return bestScore >= 0.55 ? best : null
+  return bestScore >= 0.72 ? best : null
 }
 
 export function priceKey(productId, name) {
@@ -203,6 +290,46 @@ export function formatEuro(value) {
   return `${n.toFixed(2).replace('.', ',')}€`
 }
 
+/** Asegura que las líneas del ticket existan en catálogo (crea extras si faltan) */
+export function resolveTicketCatalog(extraProducts, ticketItems) {
+  let extras = Array.isArray(extraProducts) ? [...extraProducts] : []
+  const items = []
+
+  for (const line of ticketItems || []) {
+    const name = String(line.name || '').trim()
+    if (!name) continue
+
+    const pool = [...PRODUCTS, ...extras]
+    let product = line.productId ? pool.find((p) => p.id === line.productId) : null
+    if (!product) product = matchCatalogProduct(name, pool)
+
+    let isNew = false
+    if (!product) {
+      const created = upsertExtraProduct(extras, name)
+      extras = created.list
+      product = created.product
+      isNew = true
+    } else if (product.custom) {
+      const created = upsertExtraProduct(extras, product.name)
+      extras = created.list
+      product = created.product || product
+    }
+
+    const qty = Math.max(1, Number(line.qty) || 1)
+    items.push({
+      name: product?.name || name,
+      productId: product?.id || null,
+      qty,
+      price: line.price,
+      isNew,
+      emoji: product?.emoji || '🛒',
+      icon: product?.icon || null,
+    })
+  }
+
+  return { extras, items }
+}
+
 export function applyTicketPrices(prices, ticket) {
   const next = { ...(prices || {}) }
   const storeId = ticket.store && ticket.store !== 'todos' ? ticket.store : null
@@ -213,9 +340,10 @@ export function applyTicketPrices(prices, ticket) {
 
   for (const line of ticket.items || []) {
     const product = line.productId
-      ? PRODUCTS.find((p) => p.id === line.productId)
+      ? allProducts().find((p) => p.id === line.productId)
       : matchCatalogProduct(line.name)
-    const unit = line.qty > 1 ? Math.round((line.price / line.qty) * 100) / 100 : line.price
+    const unit =
+      line.qty > 1 ? Math.round((line.price / line.qty) * 100) / 100 : line.price
     if (!unit || unit <= 0) continue
 
     const keys = []
@@ -239,4 +367,3 @@ export function applyTicketPrices(prices, ticket) {
   next[storeId] = bucket
   return next
 }
-

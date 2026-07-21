@@ -1112,22 +1112,132 @@ function slug(text) {
     .replace(/(^-|-$)/g, '')
 }
 
+/** Productos añadidos desde tickets (u otras fuentes) */
+let EXTRA_PRODUCTS = []
+
+export function setExtraProducts(list) {
+  EXTRA_PRODUCTS = Array.isArray(list) ? list.filter((p) => p?.id && p?.name) : []
+}
+
+export function getExtraProducts() {
+  return EXTRA_PRODUCTS
+}
+
+export function allProducts() {
+  return EXTRA_PRODUCTS.length ? [...PRODUCTS, ...EXTRA_PRODUCTS] : PRODUCTS
+}
+
 export function searchProducts(query) {
   const q = norm(query.trim())
-  if (!q) return PRODUCTS
-  return PRODUCTS.filter((p) => norm(p.name).includes(q))
+  const pool = allProducts()
+  if (!q) return pool
+  return pool.filter((p) => norm(p.name).includes(q))
 }
 
 export function getProductById(id) {
-  return PRODUCTS.find((p) => p.id === id)
+  return allProducts().find((p) => p.id === id)
 }
 
 export function getProductsByCategory(categoryId) {
-  return PRODUCTS.filter((p) => p.category === categoryId)
+  return allProducts().filter((p) => p.category === categoryId)
 }
 
 export function getProductsBySub(categoryId, subId) {
-  return PRODUCTS.filter((p) => p.category === categoryId && p.sub === subId)
+  return allProducts().filter((p) => p.category === categoryId && p.sub === subId)
+}
+
+export function guessEmoji(name) {
+  const n = norm(name)
+  const rules = [
+    [['leche', 'lactosa'], '🥛'],
+    [['yogur', 'skyr'], '🥛'],
+    [['queso'], '🧀'],
+    [['huevo'], '🥚'],
+    [['pan', 'baguette', 'barra'], '🍞'],
+    [['agua'], '💧'],
+    [['cerveza'], '🍺'],
+    [['vino'], '🍷'],
+    [['cafe', 'te '], '☕'],
+    [['pollo', 'pavo'], '🍗'],
+    [['carne', 'ternera', 'cerdo', 'chorizo', 'jamon'], '🥩'],
+    [['pescado', 'atun', 'salmon', 'merluza'], '🐟'],
+    [['fruta', 'manzana', 'platano', 'naranja', 'pera', 'fresa'], '🍎'],
+    [['verdura', 'lechuga', 'tomate', 'patata', 'cebolla'], '🥦'],
+    [['arroz', 'pasta', 'espagueti'], '🍝'],
+    [['aceite'], '🫒'],
+    [['azucar', 'sal', 'harina'], '🧂'],
+    [['galleta', 'chocolate', 'snack'], '🍪'],
+    [['detergente', 'lejia', 'limpi'], '🧴'],
+    [['papel', 'servilleta'], '🧻'],
+    [['pizza'], '🍕'],
+    [['helado'], '🍦'],
+  ]
+  for (const [keys, emoji] of rules) {
+    if (keys.some((k) => n.includes(k))) return emoji
+  }
+  return '🛒'
+}
+
+export function guessCategory(name) {
+  const n = norm(name)
+  const cats = [
+    ['frutas', ['manzana', 'platano', 'naranja', 'pera', 'fresa', 'uva', 'kiwi', 'melon', 'sandia', 'limon']],
+    ['verduras', ['lechuga', 'tomate', 'patata', 'cebolla', 'pimiento', 'zanahoria', 'brocoli', 'ajo']],
+    ['lacteos', ['leche', 'yogur', 'queso', 'mantequilla', 'nata', 'huevo', 'kefir']],
+    ['carne', ['pollo', 'ternera', 'cerdo', 'pavo', 'carne', 'hamburguesa']],
+    ['pescado', ['pescado', 'atun', 'salmon', 'merluza', 'gamba', 'calamar']],
+    ['charcuteria', ['jamon', 'chorizo', 'salchichon', 'york', 'bacon', 'loncha']],
+    ['panaderia', ['pan', 'baguette', 'barra', 'croissant', 'boll']],
+    ['desayuno', ['cafe', 'te', 'cereal', 'mermelada', 'miel', 'zumo']],
+    ['bebidas', ['agua', 'cola', 'refresco', 'cerveza', 'vino', 'bebida']],
+    ['limpieza', ['detergente', 'lejia', 'limpi', 'suavizante', 'estropajo']],
+    ['hogar', ['papel higienico', 'servilleta', 'basura', 'aluminio', 'film']],
+    ['congelados', ['congelado', 'helado', 'pizza congel']],
+    ['conservas', ['conserva', 'lata', 'bote']],
+    ['salsas', ['ketchup', 'mayonesa', 'mostaza', 'salsa']],
+    ['despensa', ['arroz', 'pasta', 'aceite', 'azucar', 'sal', 'harina', 'lenteja']],
+  ]
+  for (const [cat, keys] of cats) {
+    if (keys.some((k) => n.includes(k))) {
+      return { category: cat, sub: detectSub(cat, name) }
+    }
+  }
+  return { category: 'despensa', sub: detectSub('despensa', name) }
+}
+
+/** Crea o reutiliza un producto de catálogo extra a partir del nombre del ticket */
+export function upsertExtraProduct(extras, name) {
+  const list = Array.isArray(extras) ? [...extras] : []
+  const trimmed = String(name || '').trim()
+  if (!trimmed) return { list, product: null }
+
+  const fromBase = PRODUCTS.find((p) => norm(p.name) === norm(trimmed))
+  if (fromBase) return { list, product: fromBase }
+
+  const fromExtra = list.find(
+    (p) => p.id === `extra-${slug(trimmed)}` || norm(p.name) === norm(trimmed),
+  )
+  if (fromExtra) return { list, product: fromExtra }
+
+  const { category, sub } = guessCategory(trimmed)
+  const product = {
+    id: `extra-${slug(trimmed)}`,
+    name: prettyName(trimmed),
+    emoji: guessEmoji(trimmed),
+    icon: null,
+    category,
+    sub,
+    custom: true,
+  }
+  list.push(product)
+  return { list, product }
+}
+
+function prettyName(name) {
+  return String(name)
+    .trim()
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 export function groupProducts(list) {
