@@ -274,7 +274,7 @@ function renderStoreLogoPicker(mode) {
           aria-expanded="false"
           aria-label="${escapeAttr(isFilter ? `Ver: ${storeLabel(selected, 'filter')}` : `Añadir en ${selected.name}`)}"
         >
-          ${renderStoreLogo(selected, 'md')}
+          ${renderStoreLogo(selected, 'lg')}
           <span class="store-logo-caret" aria-hidden="true"></span>
         </button>
         <div class="store-logo-menu" role="listbox" hidden>
@@ -295,7 +295,7 @@ function renderStoreLogoPicker(mode) {
                 data-store="${escapeAttr(value)}"
                 style="--store:${s.brand}"
               >
-                ${renderStoreLogo(s, 'md')}
+                ${renderStoreLogo(s, 'xl')}
               </button>`
           }).join('')}
         </div>
