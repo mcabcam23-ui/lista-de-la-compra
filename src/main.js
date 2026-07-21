@@ -243,9 +243,8 @@ function renderLista() {
 }
 
 function renderStorePicker(mode) {
-  // filter = chips arriba · add = desplegable abajo (dónde van los nuevos)
-  if (mode === 'filter') return renderStoreFilterChips()
-  return renderStoreAddSelect()
+  if (mode === 'filter') return renderStoreLogoPicker('filter')
+  return renderStoreLogoPicker('add')
 }
 
 function itemMatchesStoreFilter(item, filter) {
@@ -254,47 +253,52 @@ function itemMatchesStoreFilter(item, filter) {
   return item.store === filter || item.store === 'todos'
 }
 
-function renderStoreFilterChips() {
-  return `
-    <div class="store-bar">
-      <div class="store-bar-label">Ver</div>
-      <div class="store-scroll">
-        ${STORES.map((s) => {
-          const isTodos = s.id === 'todos'
-          const active = isTodos ? storeFilter === 'all' : storeFilter === s.id
-          const count = isTodos
-            ? state.items.reduce((n, i) => n + i.qty, 0)
-            : state.items
-                .filter((i) => itemMatchesStoreFilter(i, s.id))
-                .reduce((n, i) => n + i.qty, 0)
-          return `
-          <button class="store-chip ${active ? 'active' : ''} ${s.light ? 'light' : ''}" type="button"
-            data-action="set-store-filter"
-            data-store="${isTodos ? 'all' : s.id}"
-            style="--store:${s.brand}">
-            ${renderStoreLogo(s, 'xs')}
-            <span class="store-chip-name">${escapeHtml(storeLabel(s, 'filter'))}</span>
-            ${count ? `<em>${count}</em>` : ''}
-          </button>`
-        }).join('')}
-      </div>
-    </div>
-  `
-}
+/** Desplegable solo logos (PC y móvil) */
+function renderStoreLogoPicker(mode) {
+  const isFilter = mode === 'filter'
+  const selectedId = isFilter ? (storeFilter === 'all' ? 'todos' : storeFilter) : activeStore
+  const selected = getStore(selectedId)
+  const label = isFilter ? 'Ver' : 'Nuevos productos en'
+  const pickerId = isFilter ? 'filter' : 'add'
 
-function renderStoreAddSelect() {
-  const selected = getStore(activeStore)
   return `
-    <div class="store-bar store-bar-add">
-      <label class="store-bar-label" for="store-add-select">Nuevos productos en</label>
-      <div class="store-select-wrap ${selected.light ? 'light' : ''}" style="--store:${selected.brand}">
-        ${renderStoreLogo(selected, 'sm')}
-        <select id="store-add-select" class="store-select" data-store-mode="add">
+    <div class="store-bar ${isFilter ? '' : 'store-bar-add'}">
+      <div class="store-bar-label">${label}</div>
+      <div class="store-logo-picker" data-picker="${pickerId}">
+        <button
+          type="button"
+          class="store-logo-trigger"
+          data-action="toggle-store-picker"
+          data-picker="${pickerId}"
+          style="--store:${selected.brand}"
+          aria-expanded="false"
+          aria-label="${escapeAttr(isFilter ? `Ver: ${storeLabel(selected, 'filter')}` : `Añadir en ${selected.name}`)}"
+        >
+          ${renderStoreLogo(selected, 'md')}
+          <span class="store-logo-caret" aria-hidden="true"></span>
+        </button>
+        <div class="store-logo-menu" role="listbox" hidden>
           ${STORES.map((s) => {
-            const selectedAttr = activeStore === s.id
-            return `<option value="${escapeAttr(s.id)}" ${selectedAttr ? 'selected' : ''}>${escapeHtml(storeLabel(s, 'add'))}</option>`
+            const value = isFilter ? (s.id === 'todos' ? 'all' : s.id) : s.id
+            const active = isFilter
+              ? (s.id === 'todos' ? storeFilter === 'all' : storeFilter === s.id)
+              : activeStore === s.id
+            const action = isFilter ? 'set-store-filter' : 'set-active-store'
+            return `
+              <button
+                type="button"
+                class="store-logo-option ${active ? 'active' : ''}"
+                role="option"
+                aria-selected="${active ? 'true' : 'false'}"
+                aria-label="${escapeAttr(storeLabel(s, isFilter ? 'filter' : 'add'))}"
+                data-action="${action}"
+                data-store="${escapeAttr(value)}"
+                style="--store:${s.brand}"
+              >
+                ${renderStoreLogo(s, 'md')}
+              </button>`
           }).join('')}
-        </select>
+        </div>
       </div>
     </div>
   `
@@ -570,16 +574,19 @@ function bindEvents() {
 }
 
 function bindStoreSelects() {
-  app.querySelectorAll('select[data-store-mode="add"]').forEach((select) => {
-    if (select.dataset.bound) return
-    select.dataset.bound = '1'
-    select.addEventListener('change', () => {
-      activeStore = select.value
-      localStorage.setItem('compra:store', activeStore)
-      showToast(`Nuevos en ${getStore(activeStore).name}`)
-      softRerender()
+  // Cerrar desplegable de logos al tocar fuera
+  if (!app.dataset.storePickerBound) {
+    app.dataset.storePickerBound = '1'
+    document.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('.store-logo-picker')) return
+      app.querySelectorAll('.store-logo-picker.open').forEach((p) => {
+        p.classList.remove('open')
+        p.querySelector('.store-logo-trigger')?.setAttribute('aria-expanded', 'false')
+        const m = p.querySelector('.store-logo-menu')
+        if (m) m.hidden = true
+      })
     })
-  })
+  }
 }
 
 function softRerender() {
@@ -761,6 +768,24 @@ function onAction(e) {
       if (Date.now() < suppressProductClickUntil) break
       addProductQty(btn.dataset.product, 1)
       break
+    case 'toggle-store-picker': {
+      const picker = app.querySelector(`.store-logo-picker[data-picker="${btn.dataset.picker}"]`)
+      if (!picker) break
+      const open = picker.classList.toggle('open')
+      const trigger = picker.querySelector('.store-logo-trigger')
+      const menu = picker.querySelector('.store-logo-menu')
+      if (trigger) trigger.setAttribute('aria-expanded', open ? 'true' : 'false')
+      if (menu) menu.hidden = !open
+      // Cerrar otros pickers
+      app.querySelectorAll('.store-logo-picker.open').forEach((p) => {
+        if (p === picker) return
+        p.classList.remove('open')
+        p.querySelector('.store-logo-trigger')?.setAttribute('aria-expanded', 'false')
+        const m = p.querySelector('.store-logo-menu')
+        if (m) m.hidden = true
+      })
+      break
+    }
     case 'set-store-filter': {
       storeFilter = btn.dataset.store
       softRerender()
