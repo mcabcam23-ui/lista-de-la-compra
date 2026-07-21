@@ -480,7 +480,7 @@ function renderProductCard(product) {
   )
   const price = getPriceEntry(state.prices, product.id, product.name, activeStore)
   return `
-    <button class="product-card ${existing ? 'in-list' : ''}" type="button" data-action="toggle-product" data-product="${escapeAttr(product.id)}" data-longpress="add-qty" title="Toca: +1 · Mantén: elegir cantidad">
+    <button class="product-card ${existing ? 'in-list' : ''}" type="button" data-action="toggle-product" data-product="${escapeAttr(product.id)}" data-longpress="add-qty" title="Toca: +1 · Mantén: cambiar cantidad">
       <span class="product-icon">
         ${renderIcon(product, 'sm')}
         ${price ? `<span class="price-under">${escapeHtml(formatEuro(price.price))}</span>` : ''}
@@ -808,18 +808,61 @@ function addProductQty(productId, qty) {
   softRerender()
 }
 
+/** Fija la cantidad exacta (no suma). 0 = quitar de este súper. */
+function setProductQty(productId, qty) {
+  const product = getProductById(productId)
+  if (!product) return
+  const amount = Math.max(0, Math.min(99, Number(qty) || 0))
+  const existing = state.items.find(
+    (i) => i.productId === productId && i.store === activeStore,
+  )
+
+  if (amount <= 0) {
+    if (!existing) return
+    if (state.items.length === 1 && !confirmLastProduct(product.name)) return
+    state.items = state.items.filter((i) => i.id !== existing.id)
+    persist()
+    showToast(`✕ ${product.name}`)
+    vibrate()
+    softRerender()
+    return
+  }
+
+  if (existing) {
+    existing.qty = amount
+  } else {
+    state.items.unshift({
+      id: crypto.randomUUID(),
+      productId,
+      name: product.name,
+      emoji: product.emoji,
+      icon: product.icon || null,
+      qty: amount,
+      store: activeStore,
+      addedBy: state.member || '',
+      addedAt: Date.now(),
+    })
+  }
+  persist()
+  showToast(`${amount}× ${product.name} · ${getStore(activeStore).name}`)
+  vibrate()
+  softRerender()
+}
+
 function openQtySheet(productId) {
   const product = getProductById(productId)
   if (!product) return
   const existing = state.items.find(
     (i) => i.productId === productId && i.store === activeStore,
   )
+  const editing = Boolean(existing)
   const totalOfProduct = state.items
     .filter((i) => i.productId === productId)
     .reduce((n, i) => n + i.qty, 0)
-  qtyDraft = 2
+  qtyDraft = editing ? existing.qty : 2
   const overlay = app.querySelector('#overlay')
   if (!overlay) return
+  const minQty = editing ? 0 : 1
 
   overlay.innerHTML = `
     <div class="sheet qty-sheet">
@@ -827,13 +870,20 @@ function openQtySheet(productId) {
         <span class="qty-sheet-icon">${renderIcon(product, 'md')}</span>
         <div>
           <h2>${escapeHtml(product.name)}</h2>
-          <p>Añadir en <strong>${escapeHtml(getStore(activeStore).name)}</strong>${existing ? ` · ya hay ${existing.qty}` : ''}</p>
+          <p>${
+            editing
+              ? `Cambiar cantidad en <strong>${escapeHtml(getStore(activeStore).name)}</strong> · ahora ${existing.qty}`
+              : `Añadir en <strong>${escapeHtml(getStore(activeStore).name)}</strong>`
+          }</p>
         </div>
       </div>
       <div class="qty-presets">
-        ${[2, 3, 4, 5, 6, 8, 10, 12].map((n) => `
-          <button type="button" class="qty-preset ${qtyDraft === n ? 'active' : ''}" data-qty="${n}">${n}</button>
-        `).join('')}
+        ${[1, 2, 3, 4, 5, 6, 8, 10, 12]
+          .map(
+            (n) => `
+          <button type="button" class="qty-preset ${qtyDraft === n ? 'active' : ''}" data-qty="${n}">${n}</button>`,
+          )
+          .join('')}
       </div>
       <div class="qty-stepper">
         <button type="button" class="qty-step" data-delta="-1" aria-label="Menos">−</button>
@@ -842,11 +892,15 @@ function openQtySheet(productId) {
       </div>
       <div class="sheet-actions">
         <button class="secondary-btn" type="button" data-action="close-sheet">Cancelar</button>
-        <button class="primary-btn" type="button" id="confirm-qty">Añadir ${qtyDraft}</button>
+        <button class="primary-btn" type="button" id="confirm-qty">${
+          editing ? (qtyDraft === 0 ? 'Quitar' : `Dejar en ${qtyDraft}`) : `Añadir ${qtyDraft}`
+        }</button>
       </div>
       ${
-        totalOfProduct
-          ? `<button class="danger-btn qty-delete-btn" type="button" id="delete-product">Borrar todas (${totalOfProduct})</button>`
+        editing
+          ? `<button class="danger-btn qty-delete-btn" type="button" id="delete-product">Quitar de la lista${
+              totalOfProduct > existing.qty ? ` (todas: ${totalOfProduct})` : ''
+            }</button>`
           : ''
       }
     </div>
@@ -857,7 +911,11 @@ function openQtySheet(productId) {
   const confirmBtn = overlay.querySelector('#confirm-qty')
   const syncDraft = () => {
     draftEl.textContent = String(qtyDraft)
-    confirmBtn.textContent = `Añadir ${qtyDraft}`
+    if (editing) {
+      confirmBtn.textContent = qtyDraft === 0 ? 'Quitar' : `Dejar en ${qtyDraft}`
+    } else {
+      confirmBtn.textContent = `Añadir ${qtyDraft}`
+    }
     overlay.querySelectorAll('.qty-preset').forEach((b) => {
       b.classList.toggle('active', Number(b.dataset.qty) === qtyDraft)
     })
@@ -871,13 +929,13 @@ function openQtySheet(productId) {
   })
   overlay.querySelectorAll('.qty-step').forEach((b) => {
     b.addEventListener('click', () => {
-      qtyDraft = Math.max(1, Math.min(99, qtyDraft + Number(b.dataset.delta)))
+      qtyDraft = Math.max(minQty, Math.min(99, qtyDraft + Number(b.dataset.delta)))
       syncDraft()
     })
   })
   confirmBtn.addEventListener('click', () => {
     closeSheet()
-    addProductQty(productId, qtyDraft)
+    setProductQty(productId, qtyDraft)
   })
   const deleteBtn = overlay.querySelector('#delete-product')
   if (deleteBtn) {
