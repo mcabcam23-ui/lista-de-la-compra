@@ -347,14 +347,11 @@ function renderListItem(item) {
           </div>
         </div>
       </div>
-      <div class="buy-row">
-        <div class="buy-slide" data-buy-id="${escapeAttr(item.id)}">
-          <div class="buy-slide-fill"></div>
-          <span class="buy-slide-label">Desliza para comprar</span>
-          <span class="buy-slide-done">✓ Comprado</span>
-          <button class="buy-slide-knob" type="button" aria-label="Deslizar a la derecha para marcar comprado">›</button>
-        </div>
-        <button class="buy-tap-btn" type="button" data-action="buy-item" data-id="${escapeAttr(item.id)}" aria-label="Marcar comprado">✓</button>
+      <div class="buy-slide" data-buy-id="${escapeAttr(item.id)}">
+        <div class="buy-slide-fill"></div>
+        <span class="buy-slide-label">Desliza para comprar</span>
+        <span class="buy-slide-done">✓ Comprado</span>
+        <button class="buy-slide-knob" type="button" aria-label="Deslizar a la derecha para marcar comprado">›</button>
       </div>
     </article>
   `
@@ -779,9 +776,6 @@ function onAction(e) {
       break
     case 'qty':
       changeQty(btn.dataset.id, Number(btn.dataset.delta))
-      break
-    case 'buy-item':
-      buyItem(btn.dataset.id)
       break
     case 'add-custom':
       openQuickAddSheet()

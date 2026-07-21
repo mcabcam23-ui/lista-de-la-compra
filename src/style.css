@@ -497,30 +497,6 @@ button {
 }
 
 /* Deslizar para comprar */
-.buy-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 48px;
-  gap: 8px;
-  align-items: stretch;
-}
-
-.buy-tap-btn {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  border: 1px solid #b7e0c6;
-  background: #e8f7ee;
-  color: var(--brand);
-  font-size: 1.25rem;
-  font-weight: 800;
-  touch-action: manipulation;
-}
-
-.buy-tap-btn:active {
-  transform: scale(0.96);
-  background: #d4f0df;
-}
-
 .buy-slide {
   --slide-x: 0px;
   position: relative;
