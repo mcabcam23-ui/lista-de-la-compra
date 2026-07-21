@@ -295,7 +295,7 @@ function renderListItem(item) {
       </div>
       <div class="buy-slide" data-buy-id="${escapeAttr(item.id)}">
         <div class="buy-slide-fill"></div>
-        <span class="buy-slide-label">Desliza para confirmar compra</span>
+        <span class="buy-slide-label">Desliza para comprar</span>
         <span class="buy-slide-done">✓ Comprado</span>
         <button class="buy-slide-knob" type="button" aria-label="Deslizar a la derecha para marcar comprado">›</button>
       </div>
@@ -446,7 +446,7 @@ function renderProductCard(product) {
   )
   return `
     <button class="product-card ${existing ? 'in-list' : ''}" type="button" data-action="toggle-product" data-product="${escapeAttr(product.id)}" data-longpress="add-qty" title="Toca: +1 · Mantén: elegir cantidad">
-      <span class="product-icon">${renderIcon(product, 'md')}</span>
+      <span class="product-icon">${renderIcon(product, 'sm')}</span>
       <span class="name">${escapeHtml(product.name)}</span>
       ${existing ? `<span class="qty-tag">×${existing.qty}</span>` : ''}
     </button>
