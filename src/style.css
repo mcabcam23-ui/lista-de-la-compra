@@ -405,14 +405,20 @@ button {
 
 .item-emoji {
   width: 48px;
-  height: 48px;
+  min-height: 48px;
+  height: auto;
   border-radius: 14px;
   background: linear-gradient(160deg, #f7fbf8, #e7f3ec);
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
   font-size: 1.7rem;
   overflow: hidden;
   flex-shrink: 0;
+  padding: 4px 2px;
+  box-sizing: border-box;
 }
 
 .item-info {
@@ -646,8 +652,11 @@ button {
 }
 
 .product-card .product-icon {
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
   min-height: 40px;
   width: 100%;
   overflow: hidden;
@@ -1735,21 +1744,14 @@ button {
   margin-top: 10px;
 }
 
-.price-tag {
-  font-style: normal;
-  font-weight: 800;
-  color: var(--brand-dark);
-  margin-left: 6px;
-}
-
-.price-chip {
-  font-size: 0.68rem;
-  font-weight: 800;
-  color: var(--brand-dark);
-  background: #fff;
-  border-radius: 999px;
-  padding: 2px 7px;
-  border: 1px solid color-mix(in srgb, var(--brand) 25%, var(--line));
+.price-under {
+  display: block;
+  font-size: 0.58rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--muted);
+  letter-spacing: -0.01em;
+  opacity: 0.85;
 }
 
 .ticket-total {

@@ -303,15 +303,18 @@ function renderListItem(item) {
   const store = getStore(item.store)
   const who = item.addedBy ? `Añadido por ${item.addedBy}` : 'En la lista'
   const when = item.addedAt ? ` · ${formatTime(item.addedAt)}` : ''
-  const price = getPriceEntry(state.prices, item.productId, name)
+  const price = getPriceEntry(state.prices, item.productId, name, item.store)
 
   return `
     <article class="list-item" data-id="${escapeAttr(item.id)}" style="--store:${store.brand}">
       <div class="item-main">
-        <div class="item-emoji">${renderIcon(visual, 'sm')}</div>
+        <div class="item-emoji">
+          ${renderIcon(visual, 'sm')}
+          ${price ? `<span class="price-under">${escapeHtml(formatEuro(price.price))}</span>` : ''}
+        </div>
         <div class="item-info">
           <strong>${escapeHtml(name)}</strong>
-          <span>${escapeHtml(who + when)}${price ? `<em class="price-tag">${escapeHtml(formatEuro(price.price))}</em>` : ''}</span>
+          <span>${escapeHtml(who + when)}</span>
         </div>
         <div class="item-side">
           <button class="store-badge" type="button" data-action="cycle-store" data-id="${escapeAttr(item.id)}" title="Cambiar supermercado" style="--store:${store.brand}">
@@ -475,12 +478,14 @@ function renderProductCard(product) {
   const existing = state.items.find(
     (i) => i.productId === product.id && i.store === activeStore,
   )
-  const price = getPriceEntry(state.prices, product.id, product.name)
+  const price = getPriceEntry(state.prices, product.id, product.name, activeStore)
   return `
     <button class="product-card ${existing ? 'in-list' : ''}" type="button" data-action="toggle-product" data-product="${escapeAttr(product.id)}" data-longpress="add-qty" title="Toca: +1 · Mantén: elegir cantidad">
-      <span class="product-icon">${renderIcon(product, 'sm')}</span>
+      <span class="product-icon">
+        ${renderIcon(product, 'sm')}
+        ${price ? `<span class="price-under">${escapeHtml(formatEuro(price.price))}</span>` : ''}
+      </span>
       <span class="name">${escapeHtml(product.name)}</span>
-      ${price ? `<span class="price-chip">${escapeHtml(formatEuro(price.price))}</span>` : ''}
       ${existing ? `<span class="qty-tag">×${existing.qty}</span>` : ''}
     </button>
   `
@@ -1490,7 +1495,7 @@ function openTicketReview(draft) {
     <div class="sheet">
       <button class="sheet-close" type="button" data-action="close-sheet" aria-label="Cerrar">✕</button>
       <h2>Revisar ticket</h2>
-      <p>Comprueba productos y precios antes de guardar. Se actualizarán los precios del catálogo.</p>
+      <p>Supermercado detectado: <strong>${escapeHtml(store.name)}</strong>. Los precios se guardan solo para ese súper. Comprueba y guarda.</p>
       <label for="ticket-store">Supermercado</label>
       <div class="store-select-wrap" style="--store:${store.brand}">
         <span class="store-select-dot" aria-hidden="true"></span>
@@ -1571,14 +1576,20 @@ function openTicketReview(draft) {
       scannedBy: state.member || '',
     }
     state.tickets = [ticket, ...(state.tickets || [])].slice(0, 200)
-    state.prices = applyTicketPrices(state.prices, ticket)
+    if (ticket.store && ticket.store !== 'todos') {
+      state.prices = applyTicketPrices(state.prices, ticket)
+    }
     persist()
     closeSheet()
     view = 'tickets'
     ticketDetail = ticket.id
     query = ''
     render()
-    showToast(`Ticket guardado · ${items.length} productos`)
+    showToast(
+      ticket.store && ticket.store !== 'todos'
+        ? `Ticket ${getStore(ticket.store).name} · precios actualizados`
+        : `Ticket guardado · elige supermercado para precios`,
+    )
   })
 }
 

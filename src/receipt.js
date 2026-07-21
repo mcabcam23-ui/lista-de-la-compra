@@ -115,17 +115,35 @@ function dedupeItems(items) {
 }
 
 function detectStore(lines) {
-  const blob = normalizeText(lines.slice(0, 8).join(' '))
+  const head = normalizeText(lines.slice(0, 12).join(' '))
+  const all = normalizeText(lines.join(' '))
+  const blob = `${head} ${all}`
+
+  const aliases = [
+    { id: 'mercadona', keys: ['mercadona', 'hacendado'] },
+    { id: 'lidl', keys: ['lidl'] },
+    { id: 'alimerka', keys: ['alimerka'] },
+    { id: 'alcampo', keys: ['alcampo', 'auchan'] },
+    { id: 'carrefour', keys: ['carrefour'] },
+    { id: 'familia', keys: ['supermercados familia', 'familia'] },
+  ]
+
+  let best = { id: 'todos', score: 0 }
+  for (const entry of aliases) {
+    for (const key of entry.keys) {
+      if (!blob.includes(key)) continue
+      const inHead = head.includes(key) ? 3 : 1
+      const score = inHead + key.length / 20
+      if (score > best.score) best = { id: entry.id, score }
+    }
+  }
+  if (best.score > 0) return best.id
+
   for (const store of STORES) {
     if (store.id === 'todos') continue
     const name = normalizeText(store.name)
-    if (blob.includes(name) || blob.includes(normalizeText(store.short))) return store.id
+    if (head.includes(name) || blob.includes(name)) return store.id
   }
-  if (blob.includes('mercadona')) return 'mercadona'
-  if (blob.includes('lidl')) return 'lidl'
-  if (blob.includes('alcampo')) return 'alcampo'
-  if (blob.includes('carrefour')) return 'carrefour'
-  if (blob.includes('alimerka')) return 'alimerka'
   return 'todos'
 }
 
@@ -160,41 +178,65 @@ export function priceKey(productId, name) {
   return `name:${normalizeText(name)}`
 }
 
-export function getPriceEntry(prices, productId, name) {
+/** Precio del producto en un supermercado concreto */
+export function getPriceEntry(prices, productId, name, storeId) {
   if (!prices || typeof prices !== 'object') return null
-  if (productId && prices[`id:${productId}`]) return prices[`id:${productId}`]
-  const key = priceKey(null, name)
-  return prices[key] || null
+  const store = storeId && storeId !== 'todos' ? storeId : null
+  if (!store) return null
+
+  const bucket = prices[store]
+  if (bucket && typeof bucket === 'object') {
+    if (productId && bucket[`id:${productId}`]) return bucket[`id:${productId}`]
+    return bucket[priceKey(null, name)] || null
+  }
+
+  // Compat: precios antiguos planos
+  if (productId && prices[`id:${productId}`]?.store === store) return prices[`id:${productId}`]
+  const flat = prices[priceKey(null, name)]
+  if (flat?.store === store) return flat
+  return null
 }
 
 export function formatEuro(value) {
   const n = Number(value)
   if (!Number.isFinite(n)) return ''
-  return `${n.toFixed(2).replace('.', ',')} €`
+  return `${n.toFixed(2).replace('.', ',')}€`
 }
 
 export function applyTicketPrices(prices, ticket) {
   const next = { ...(prices || {}) }
+  const storeId = ticket.store && ticket.store !== 'todos' ? ticket.store : null
+  if (!storeId) return next
+
+  const bucket = { ...(next[storeId] || {}) }
   const at = ticket.boughtAt || Date.now()
+
   for (const line of ticket.items || []) {
-    const product = line.productId ? PRODUCTS.find((p) => p.id === line.productId) : matchCatalogProduct(line.name)
+    const product = line.productId
+      ? PRODUCTS.find((p) => p.id === line.productId)
+      : matchCatalogProduct(line.name)
     const unit = line.qty > 1 ? Math.round((line.price / line.qty) * 100) / 100 : line.price
     if (!unit || unit <= 0) continue
+
     const keys = []
     if (product?.id) keys.push(`id:${product.id}`)
     keys.push(priceKey(null, product?.name || line.name))
+
     for (const key of keys) {
-      const prev = next[key]
+      const prev = bucket[key]
       if (prev && (prev.updatedAt || 0) > at) continue
-      next[key] = {
+      bucket[key] = {
         name: product?.name || line.name,
         productId: product?.id || null,
         price: unit,
-        store: ticket.store || 'todos',
+        store: storeId,
         updatedAt: at,
         ticketId: ticket.id,
       }
     }
   }
+
+  next[storeId] = bucket
   return next
 }
+
