@@ -324,22 +324,22 @@ var e=Object.defineProperty,t=Object.getOwnPropertyDescriptor,n=Object.getOwnPro
   `}function rn(e){let t=new Map;for(let e of he())t.set(e,[]);for(let n of e){let e=N(n.store).id;t.has(e)||t.set(e,[]),t.get(e).push(n)}return[...t.entries()].filter(([,e])=>e.length).map(([e,t])=>({store:N(e),items:t}))}function an(e){let t=e.productId?b(e.productId):null,n=t?{emoji:t.emoji,icon:t.icon,name:t.name}:{emoji:e.emoji||`🛒`,icon:e.icon||null,name:e.name},r=t?.name||e.name,i=N(e.store),a=e.addedBy?`Añadido por ${e.addedBy}`:`En la lista`,o=e.addedAt?` · ${or(e.addedAt)}`:``,s=Ve(I.prices,e.productId,r,e.store);return`
     <article class="list-item" data-id="${$(e.id)}" style="--store:${i.brand}">
       <div class="item-main">
-        <div class="item-emoji">
-          ${T(n,`sm`)}
-          ${s?`<span class="price-under">${Q(He(s.price))}</span>`:``}
-        </div>
-        <div class="item-info">
-          <strong>${Q(r)}</strong>
-          <span>${Q(a+o)}</span>
-        </div>
-        <div class="item-side">
-          <button class="store-badge" type="button" data-action="cycle-store" data-id="${$(e.id)}" title="Cambiar supermercado" style="--store:${i.brand}">
-            ${Q(i.short)}
-          </button>
-          <div class="qty">
-            <button type="button" data-action="qty" data-id="${$(e.id)}" data-delta="-1" aria-label="Menos">−</button>
-            <b>${e.qty}</b>
-            <button type="button" data-action="qty" data-id="${$(e.id)}" data-delta="1" aria-label="Más">＋</button>
+        <div class="item-emoji">${T(n,`sm`)}</div>
+        <div class="item-body">
+          <div class="item-info">
+            <strong>${Q(r)}</strong>
+            <span class="item-meta">${Q(a+o)}</span>
+            <span class="item-price ${s?``:`is-empty`}">${s?Q(He(s.price)):`0,00€`}</span>
+          </div>
+          <div class="item-side">
+            <button class="store-badge" type="button" data-action="cycle-store" data-id="${$(e.id)}" title="Cambiar supermercado" style="--store:${i.brand}">
+              ${Q(i.short)}
+            </button>
+            <div class="qty">
+              <button type="button" data-action="qty" data-id="${$(e.id)}" data-delta="-1" aria-label="Menos">−</button>
+              <b>${e.qty}</b>
+              <button type="button" data-action="qty" data-id="${$(e.id)}" data-delta="1" aria-label="Más">＋</button>
+            </div>
           </div>
         </div>
       </div>
