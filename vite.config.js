@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  base: './',
   server: {
     host: true,
     proxy: {
@@ -23,7 +24,8 @@ export default defineConfig({
         background_color: '#f3f7f4',
         display: 'standalone',
         orientation: 'portrait',
-        start_url: '/',
+        start_url: './',
+        scope: './',
         lang: 'es',
         icons: [
           {
