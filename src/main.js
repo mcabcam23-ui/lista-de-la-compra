@@ -35,6 +35,7 @@ import {
   recognizeCanvas,
   terminateScanner,
   preloadScanner,
+  startTicketTracking,
 } from './scanner.js'
 
 const listId = getListIdFromUrl()
@@ -1446,7 +1447,10 @@ async function openTicketScanner() {
       <p>Enfoca el ticket dentro del marco. El escaneo lee el texto en vivo (no es una foto de galería).</p>
       <div class="scanner-stage">
         <video id="scan-video" playsinline muted autoplay></video>
-        <div class="scanner-frame" aria-hidden="true"></div>
+        <div class="scanner-dim" aria-hidden="true"></div>
+        <svg class="scanner-frame" id="scan-frame" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <polygon class="scanner-frame-border" points="18,10 82,10 82,90 18,90"></polygon>
+        </svg>
         <div class="scanner-status" id="scan-status">Abriendo cámara…</div>
       </div>
       <div class="sheet-actions">
@@ -1479,12 +1483,14 @@ async function openTicketScanner() {
 
   try {
     await startCamera(video)
-    status.textContent = 'Enfoca el ticket… escaneando automáticamente'
+    const frame = overlay.querySelector('#scan-frame')
+    startTicketTracking(video, frame)
+    status.textContent = 'Enfoca el ticket… el marco se adapta solo'
     const run = () => runTicketScan(video, status)
     overlay.querySelector('#scan-now').addEventListener('click', run)
     clearInterval(scanLoop)
-    scanLoop = setInterval(run, 2200)
-    setTimeout(run, 700)
+    scanLoop = setInterval(run, 2400)
+    setTimeout(run, 900)
   } catch {
     status.textContent = 'No se pudo abrir la cámara. Revisa permisos.'
     showToast('Permiso de cámara denegado')
@@ -1515,8 +1521,8 @@ async function runTicketScan(video, statusEl) {
     if (statusEl) {
       statusEl.textContent =
         (parsed.items || []).length === 1
-          ? 'Casi… mueve un poco para leer más líneas'
-          : 'Sigue enfocando el ticket (busca líneas con precios)'
+          ? 'Casi… ajusta el ticket dentro del marco adaptado'
+          : 'Sigue el marco verde: se adapta a la forma del ticket'
     }
   } catch {
     if (statusEl) statusEl.textContent = 'Error al escanear. Reintenta.'
