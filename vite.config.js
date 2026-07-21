@@ -24,9 +24,10 @@ export default defineConfig({
         background_color: '#f3f7f4',
         display: 'standalone',
         orientation: 'portrait',
-        start_url: './',
+        start_url: './?lista=familia',
         scope: './',
         lang: 'es',
+        id: './?lista=familia',
         icons: [
           {
             src: 'favicon.svg',

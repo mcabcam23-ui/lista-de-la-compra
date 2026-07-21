@@ -43,6 +43,17 @@ let toastTimer = null
 let syncTimer = null
 let pushing = false
 let syncOk = false
+let deferredInstallPrompt = null
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault()
+  deferredInstallPrompt = e
+})
+
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null
+  showToast('App instalada en el móvil')
+})
 
 const app = document.querySelector('#app')
 
@@ -1376,6 +1387,9 @@ function openSheet(type) {
 
   if (type === 'settings') {
     const url = getSyncUrl()
+    const installed = isAppInstalled()
+    const canInstall = !!deferredInstallPrompt
+    const ios = isIosSafari()
     overlay.innerHTML = `
       <div class="sheet">
         <h2>Ajustes</h2>
@@ -1387,6 +1401,25 @@ function openSheet(type) {
         <label>URL de sincronización</label>
         <input id="set-sync" type="url" placeholder="${escapeAttr(window.location.origin + '/api')}" value="${escapeAttr(url)}" />
         <p style="font-size:0.82rem;margin-top:8px">Con <code>npm run start</code> usa la API del mismo servidor. También puedes pegar una URL de Firebase Realtime Database.</p>
+
+        <div class="install-box">
+          <strong>Instalar en el móvil</strong>
+          <p>La app instalada usa la misma lista y sincronización que en el navegador.</p>
+          ${
+            installed
+              ? `<p class="install-status">✓ Ya está instalada en este dispositivo</p>`
+              : canInstall
+                ? `<button class="primary-btn" type="button" id="install-app" style="width:100%">Instalar app</button>`
+                : ios
+                  ? `<ol class="install-steps">
+                      <li>Pulsa el botón <strong>Compartir</strong> (□↑) en Safari.</li>
+                      <li>Elige <strong>Añadir a pantalla de inicio</strong>.</li>
+                      <li>Confirma con <strong>Añadir</strong>.</li>
+                    </ol>`
+                  : `<p class="install-status">Abre esta página en Chrome o Edge del móvil para instalarla. Si no aparece el botón, el navegador aún no ofrece la instalación.</p>`
+          }
+        </div>
+
         <div class="sheet-actions">
           <button class="secondary-btn" type="button" data-action="close-sheet">Cerrar</button>
           <button class="primary-btn" type="button" id="save-settings">Guardar</button>
@@ -1400,6 +1433,10 @@ function openSheet(type) {
     overlay.classList.add('open')
     overlay.querySelector('#change-member').addEventListener('click', () => openSheet('member'))
     overlay.querySelector('#copy-link').addEventListener('click', copyNfcLink)
+    const installBtn = overlay.querySelector('#install-app')
+    if (installBtn) {
+      installBtn.addEventListener('click', () => installApp())
+    }
     overlay.querySelector('#save-settings').addEventListener('click', () => {
       const name = overlay.querySelector('#set-member').value.trim()
       const newList = slugify(overlay.querySelector('#set-list').value.trim() || 'familia')
@@ -1481,6 +1518,38 @@ function showToast(message) {
   el.classList.add('show')
   clearTimeout(toastTimer)
   toastTimer = setTimeout(() => el.classList.remove('show'), 1800)
+}
+
+function isAppInstalled() {
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.matchMedia('(display-mode: fullscreen)').matches ||
+    window.navigator.standalone === true
+  )
+}
+
+function isIosSafari() {
+  const ua = window.navigator.userAgent || ''
+  const iOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  const webkit = /WebKit/.test(ua)
+  const chromeLike = /CriOS|FxiOS|EdgiOS|OPiOS/.test(ua)
+  return iOS && webkit && !chromeLike
+}
+
+async function installApp() {
+  if (!deferredInstallPrompt) {
+    showToast('Instalación no disponible ahora')
+    return
+  }
+  deferredInstallPrompt.prompt()
+  const result = await deferredInstallPrompt.userChoice
+  deferredInstallPrompt = null
+  if (result.outcome === 'accepted') {
+    showToast('Instalando…')
+    closeSheet()
+  } else {
+    showToast('Instalación cancelada')
+  }
 }
 
 function vibrate(pattern = 12) {
