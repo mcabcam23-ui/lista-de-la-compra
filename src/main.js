@@ -308,22 +308,24 @@ function renderListItem(item) {
   return `
     <article class="list-item" data-id="${escapeAttr(item.id)}" style="--store:${store.brand}">
       <div class="item-main">
-        <div class="item-emoji">
-          ${renderIcon(visual, 'sm')}
-          ${price ? `<span class="price-under">${escapeHtml(formatEuro(price.price))}</span>` : ''}
-        </div>
-        <div class="item-info">
-          <strong>${escapeHtml(name)}</strong>
-          <span>${escapeHtml(who + when)}</span>
-        </div>
-        <div class="item-side">
-          <button class="store-badge" type="button" data-action="cycle-store" data-id="${escapeAttr(item.id)}" title="Cambiar supermercado" style="--store:${store.brand}">
-            ${escapeHtml(store.short)}
-          </button>
-          <div class="qty">
-            <button type="button" data-action="qty" data-id="${escapeAttr(item.id)}" data-delta="-1" aria-label="Menos">−</button>
-            <b>${item.qty}</b>
-            <button type="button" data-action="qty" data-id="${escapeAttr(item.id)}" data-delta="1" aria-label="Más">＋</button>
+        <div class="item-emoji">${renderIcon(visual, 'sm')}</div>
+        <div class="item-body">
+          <div class="item-info">
+            <strong>${escapeHtml(name)}</strong>
+            <span class="item-meta">${escapeHtml(who + when)}</span>
+            <span class="item-price ${price ? '' : 'is-empty'}">${
+              price ? escapeHtml(formatEuro(price.price)) : '0,00€'
+            }</span>
+          </div>
+          <div class="item-side">
+            <button class="store-badge" type="button" data-action="cycle-store" data-id="${escapeAttr(item.id)}" title="Cambiar supermercado" style="--store:${store.brand}">
+              ${escapeHtml(store.short)}
+            </button>
+            <div class="qty">
+              <button type="button" data-action="qty" data-id="${escapeAttr(item.id)}" data-delta="-1" aria-label="Menos">−</button>
+              <b>${item.qty}</b>
+              <button type="button" data-action="qty" data-id="${escapeAttr(item.id)}" data-delta="1" aria-label="Más">＋</button>
+            </div>
           </div>
         </div>
       </div>

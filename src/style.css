@@ -395,48 +395,79 @@ button {
 }
 
 .item-main {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
   width: 100%;
   min-width: 0;
 }
 
 .item-emoji {
   width: 48px;
-  min-height: 48px;
-  height: auto;
+  height: 48px;
   border-radius: 14px;
   background: linear-gradient(160deg, #f7fbf8, #e7f3ec);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
+  display: grid;
+  place-items: center;
   font-size: 1.7rem;
   overflow: hidden;
   flex-shrink: 0;
-  padding: 4px 2px;
   box-sizing: border-box;
 }
 
-.item-info {
+.item-body {
+  flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.item-info {
+  flex: 1;
+  min-width: 0;
+  padding-right: 4px;
 }
 
 .item-info strong {
   display: block;
   font-size: 1.02rem;
-  line-height: 1.2;
+  line-height: 1.25;
   overflow-wrap: anywhere;
 }
 
-.item-info span {
+.item-meta {
   display: block;
-  margin-top: 4px;
+  margin-top: 3px;
   font-size: 0.78rem;
   color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-price {
+  display: block;
+  margin-top: 6px;
+  min-height: 1.05em;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--brand);
+  line-height: 1.1;
+}
+
+.item-price.is-empty {
+  visibility: hidden;
+}
+
+.item-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+  max-width: none;
 }
 
 .qty {
@@ -446,6 +477,7 @@ button {
   background: var(--bg);
   border-radius: 12px;
   padding: 2px;
+  flex-shrink: 0;
 }
 
 .qty button {
@@ -1631,14 +1663,13 @@ button {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6px;
+  gap: 8px;
   flex-shrink: 0;
-  max-width: 42%;
 }
 
 .store-badge {
   height: 24px;
-  max-width: 100%;
+  max-width: 96px;
   padding: 0 8px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--store, var(--brand)) 16%, #fff);
