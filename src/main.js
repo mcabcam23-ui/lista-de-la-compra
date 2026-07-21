@@ -12,7 +12,7 @@ import {
   allProducts,
 } from './products.js'
 import { renderIcon, renderCategoryIcon } from './icons.js'
-import { STORES, getStore, storeOrder, storeLabel } from './stores.js'
+import { STORES, getStore, storeOrder, storeLabel, renderStoreLogo } from './stores.js'
 import {
   getListIdFromUrl,
   loadLocal,
@@ -221,7 +221,7 @@ function renderLista() {
                 (g) => `
         <section class="store-group" style="--store:${g.store.brand}">
           <div class="store-group-head">
-            <span class="store-dot"></span>
+            ${renderStoreLogo(g.store, 'sm')}
             <h3>${escapeHtml(g.store.name)}</h3>
             <em>${g.items.reduce((n, i) => n + i.qty, 0)}</em>
           </div>
@@ -272,7 +272,8 @@ function renderStoreFilterChips() {
             data-action="set-store-filter"
             data-store="${isTodos ? 'all' : s.id}"
             style="--store:${s.brand}">
-            ${escapeHtml(storeLabel(s, 'filter'))}
+            ${renderStoreLogo(s, 'xs')}
+            <span class="store-chip-name">${escapeHtml(storeLabel(s, 'filter'))}</span>
             ${count ? `<em>${count}</em>` : ''}
           </button>`
         }).join('')}
@@ -287,7 +288,7 @@ function renderStoreAddSelect() {
     <div class="store-bar store-bar-add">
       <label class="store-bar-label" for="store-add-select">Nuevos productos en</label>
       <div class="store-select-wrap ${selected.light ? 'light' : ''}" style="--store:${selected.brand}">
-        <span class="store-select-dot" aria-hidden="true"></span>
+        ${renderStoreLogo(selected, 'sm')}
         <select id="store-add-select" class="store-select" data-store-mode="add">
           ${STORES.map((s) => {
             const selectedAttr = activeStore === s.id
@@ -337,7 +338,8 @@ function renderListItem(item) {
           </div>
           <div class="item-side">
             <button class="store-badge" type="button" data-action="cycle-store" data-id="${escapeAttr(item.id)}" title="Cambiar supermercado" style="--store:${store.brand}">
-              ${escapeHtml(store.short)}
+              ${renderStoreLogo(store, 'xs')}
+              <span>${escapeHtml(store.short)}</span>
             </button>
             <div class="qty">
               <button type="button" data-action="qty" data-id="${escapeAttr(item.id)}" data-delta="-1" aria-label="Menos">−</button>
@@ -1040,7 +1042,7 @@ function openQuickAddSheet(initialName = '') {
       <input id="quick-add-name" type="text" maxlength="60" placeholder="Ej. cilantro" value="${escapeAttr(prefill)}" autocomplete="off" />
       <label for="quick-add-store">Nuevos productos en</label>
       <div class="store-select-wrap ${selected.light ? 'light' : ''}" style="--store:${selected.brand}">
-        <span class="store-select-dot" aria-hidden="true"></span>
+        ${renderStoreLogo(selected, 'sm')}
         <select id="quick-add-store" class="store-select">
           ${STORES.map((s) => {
             const selectedAttr = activeStore === s.id
@@ -1064,6 +1066,8 @@ function openQuickAddSheet(initialName = '') {
     const store = getStore(storeSelect.value)
     wrap.style.setProperty('--store', store.brand)
     wrap.classList.toggle('light', !!store.light)
+    const logo = wrap.querySelector('.store-logo')
+    if (logo) logo.outerHTML = renderStoreLogo(store, 'sm')
   }
   storeSelect.addEventListener('change', syncStoreLook)
 
@@ -1415,6 +1419,7 @@ function renderTickets() {
                   const count = (t.items || []).length
                   return `
                   <button class="history-day-card" type="button" data-action="open-ticket" data-ticket="${escapeAttr(t.id)}">
+                    ${renderStoreLogo(store, 'md')}
                     <div class="history-day-card-main">
                       <strong>${escapeHtml(store.name)}</strong>
                       <span>${escapeHtml(formatDayLabel(dayKey(t.boughtAt)))} · ${count} producto${count === 1 ? '' : 's'}</span>
@@ -1441,7 +1446,7 @@ function renderTicketDetail(id) {
     <div class="browse-bar">
       <button class="back-btn" type="button" data-action="close-ticket" aria-label="Volver">←</button>
       <div class="browse-bar-title">
-        <span class="browse-bar-icon">🧾</span>
+        ${renderStoreLogo(store, 'md')}
         <div>
           <strong>${escapeHtml(store.name)}</strong>
           <span>${escapeHtml(formatDayLabel(dayKey(ticket.boughtAt)))} · ${escapeHtml(formatEuro(ticket.total || 0))}</span>
@@ -1610,7 +1615,7 @@ function openTicketReview(draft) {
       <p>Comprueba líneas y precios. Al guardar se actualizan precios y se añaden productos nuevos al catálogo.</p>
       <label for="ticket-store">Supermercado</label>
       <div class="store-select-wrap" style="--store:${store.brand}">
-        <span class="store-select-dot" aria-hidden="true"></span>
+        ${renderStoreLogo(store, 'sm')}
         <select id="ticket-store" class="store-select">
           ${STORES.map(
             (s) =>
@@ -1662,6 +1667,8 @@ function openTicketReview(draft) {
   storeSelect.addEventListener('change', () => {
     const s = getStore(storeSelect.value)
     wrap.style.setProperty('--store', s.brand)
+    const logo = wrap.querySelector('.store-logo')
+    if (logo) logo.outerHTML = renderStoreLogo(s, 'sm')
     const nameEl = overlay.querySelector('#receipt-store-name')
     if (nameEl) nameEl.textContent = s.name
   })
@@ -1753,7 +1760,7 @@ function renderHistoryEntry(entry) {
       <div class="item-emoji">${renderIcon(visual, 'sm')}</div>
       <div class="item-info">
         <strong>${escapeHtml(entry.name)} <em class="history-qty">×${entry.qty || 1}</em></strong>
-        <span>${escapeHtml(store.name)} · ${escapeHtml(who)} · ${escapeHtml(time)}</span>
+        <span class="history-store-line">${renderStoreLogo(store, 'xs')} ${escapeHtml(store.name)} · ${escapeHtml(who)} · ${escapeHtml(time)}</span>
       </div>
     </article>
   `
