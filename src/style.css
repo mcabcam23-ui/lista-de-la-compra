@@ -716,6 +716,15 @@ button {
   box-sizing: border-box;
 }
 
+.bottom-nav-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.bottom-nav-4 .nav-btn {
+  font-size: 0.64rem;
+}
+
 .nav-btn {
   height: 54px;
   min-width: 0;
@@ -1725,4 +1734,107 @@ button {
   width: 100%;
   margin-top: 10px;
 }
+
+.price-tag {
+  font-style: normal;
+  font-weight: 800;
+  color: var(--brand-dark);
+  margin-left: 6px;
+}
+
+.price-chip {
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: var(--brand-dark);
+  background: #fff;
+  border-radius: 999px;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--brand) 25%, var(--line));
+}
+
+.ticket-total {
+  min-width: auto !important;
+  width: auto !important;
+  height: auto !important;
+  padding: 8px 10px !important;
+  border-radius: 12px !important;
+  font-size: 0.78rem !important;
+  white-space: nowrap;
+}
+
+.scanner-sheet {
+  position: relative;
+  max-height: min(92dvh, 820px);
+}
+
+.scanner-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  max-height: 52dvh;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #0b1a12;
+  margin: 10px 0 4px;
+}
+
+.scanner-stage video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.scanner-frame {
+  position: absolute;
+  inset: 12% 10%;
+  border: 2px solid rgba(255, 255, 255, 0.88);
+  border-radius: 14px;
+  box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+}
+
+.scanner-status {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(10, 24, 16, 0.72);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.ticket-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  max-height: 40dvh;
+  overflow: auto;
+}
+
+.ticket-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px;
+  gap: 8px;
+}
+
+.ticket-line input {
+  width: 100%;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  padding: 0 12px;
+  background: var(--bg);
+}
+
+.ticket-total-line {
+  margin: 12px 0 0;
+  font-size: 0.95rem;
+}
+
 

@@ -27,6 +27,8 @@ export function loadLocal(listId) {
       ...data,
       items: Array.isArray(data.items) ? data.items : [],
       history: Array.isArray(data.history) ? data.history : [],
+      tickets: Array.isArray(data.tickets) ? data.tickets : [],
+      prices: data.prices && typeof data.prices === 'object' ? data.prices : {},
     }
   } catch {
     return defaultState()
@@ -39,6 +41,8 @@ export function saveLocal(listId, state) {
     JSON.stringify({
       items: state.items,
       history: state.history || [],
+      tickets: state.tickets || [],
+      prices: state.prices || {},
       member: state.member,
       members: state.members,
       updatedAt: state.updatedAt || Date.now(),
@@ -50,6 +54,8 @@ export function defaultState() {
   return {
     items: [],
     history: [],
+    tickets: [],
+    prices: {},
     member: localStorage.getItem('compra:member') || '',
     members: JSON.parse(localStorage.getItem('compra:members') || '[]'),
     updatedAt: 0,
@@ -85,6 +91,8 @@ export async function pullRemote(listId) {
     return {
       items: Array.isArray(data.items) ? data.items : [],
       history: Array.isArray(data.history) ? data.history : [],
+      tickets: Array.isArray(data.tickets) ? data.tickets : [],
+      prices: data.prices && typeof data.prices === 'object' ? data.prices : {},
       members: Array.isArray(data.members) ? data.members : [],
       updatedAt: data.updatedAt || 0,
     }
@@ -98,6 +106,8 @@ export async function pushRemote(listId, state) {
     const payload = {
       items: state.items,
       history: state.history || [],
+      tickets: state.tickets || [],
+      prices: state.prices || {},
       members: state.members,
       updatedAt: Date.now(),
     }

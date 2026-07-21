@@ -21,6 +21,21 @@ import {
   saveMember,
   saveMembers,
 } from './storage.js'
+import {
+  parseReceiptText,
+  matchCatalogProduct,
+  getPriceEntry,
+  formatEuro,
+  applyTicketPrices,
+} from './receipt.js'
+import {
+  startCamera,
+  stopCamera,
+  captureFrame,
+  recognizeCanvas,
+  terminateScanner,
+  preloadScanner,
+} from './scanner.js'
 
 const listId = getListIdFromUrl()
 let state = loadLocal(listId)
@@ -30,10 +45,13 @@ state.items = state.items.map((item) => ({
   store: item.store && STORES.some((s) => s.id === item.store) ? item.store : 'todos',
 }))
 if (!Array.isArray(state.history)) state.history = []
+if (!Array.isArray(state.tickets)) state.tickets = []
+if (!state.prices || typeof state.prices !== 'object') state.prices = {}
 let view = 'lista'
 let category = null // null = pasillos (rejilla)
 let subcategory = 'all'
 let historyDay = null // null = lista de días · YYYY-MM-DD = detalle
+let ticketDetail = null // null | ticket id
 let query = ''
 let activeStore = localStorage.getItem('compra:store') || 'todos'
 if (!STORES.some((s) => s.id === activeStore)) activeStore = 'todos'
@@ -44,6 +62,9 @@ let syncTimer = null
 let pushing = false
 let syncOk = false
 let deferredInstallPrompt = null
+let scanLoop = null
+let scanBusy = false
+let pendingTicketDraft = null
 
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault()
@@ -94,7 +115,9 @@ function render() {
               ? historyDay
                 ? 'Buscar en este día…'
                 : 'Buscar día o producto…'
-              : 'Buscar productos…'
+              : view === 'tickets'
+                ? 'Buscar en tickets…'
+                : 'Buscar productos…'
         }" value="${escapeAttr(query)}" autocomplete="off" />
         ${query ? `<button class="clear-search" type="button" data-action="clear-search" aria-label="Limpiar">✕</button>` : ''}
       </div>
@@ -107,12 +130,15 @@ function render() {
       <section class="view ${view === 'catalogo' ? 'active' : ''}" data-view-panel="catalogo">
         ${renderCatalogo()}
       </section>
+      <section class="view ${view === 'tickets' ? 'active' : ''}" data-view-panel="tickets">
+        ${renderTickets()}
+      </section>
       <section class="view ${view === 'historial' ? 'active' : ''}" data-view-panel="historial">
         ${renderHistorial()}
       </section>
     </main>
 
-    <nav class="bottom-nav">
+    <nav class="bottom-nav bottom-nav-4">
       <button class="nav-btn ${view === 'lista' ? 'active' : ''}" type="button" data-action="set-view" data-view="lista">
         <span class="icon">📝</span>
         Lista ${count ? `(${count})` : ''}
@@ -120,6 +146,10 @@ function render() {
       <button class="nav-btn ${view === 'catalogo' ? 'active' : ''}" type="button" data-action="set-view" data-view="catalogo">
         <span class="icon">🏪</span>
         Añadir
+      </button>
+      <button class="nav-btn ${view === 'tickets' ? 'active' : ''}" type="button" data-action="set-view" data-view="tickets">
+        <span class="icon">🧾</span>
+        Tickets
       </button>
       <button class="nav-btn ${view === 'historial' ? 'active' : ''}" type="button" data-action="set-view" data-view="historial">
         <span class="icon">📅</span>
@@ -273,6 +303,7 @@ function renderListItem(item) {
   const store = getStore(item.store)
   const who = item.addedBy ? `Añadido por ${item.addedBy}` : 'En la lista'
   const when = item.addedAt ? ` · ${formatTime(item.addedAt)}` : ''
+  const price = getPriceEntry(state.prices, item.productId, name)
 
   return `
     <article class="list-item" data-id="${escapeAttr(item.id)}" style="--store:${store.brand}">
@@ -280,7 +311,7 @@ function renderListItem(item) {
         <div class="item-emoji">${renderIcon(visual, 'sm')}</div>
         <div class="item-info">
           <strong>${escapeHtml(name)}</strong>
-          <span>${escapeHtml(who + when)}</span>
+          <span>${escapeHtml(who + when)}${price ? `<em class="price-tag">${escapeHtml(formatEuro(price.price))}</em>` : ''}</span>
         </div>
         <div class="item-side">
           <button class="store-badge" type="button" data-action="cycle-store" data-id="${escapeAttr(item.id)}" title="Cambiar supermercado" style="--store:${store.brand}">
@@ -444,10 +475,12 @@ function renderProductCard(product) {
   const existing = state.items.find(
     (i) => i.productId === product.id && i.store === activeStore,
   )
+  const price = getPriceEntry(state.prices, product.id, product.name)
   return `
     <button class="product-card ${existing ? 'in-list' : ''}" type="button" data-action="toggle-product" data-product="${escapeAttr(product.id)}" data-longpress="add-qty" title="Toca: +1 · Mantén: elegir cantidad">
       <span class="product-icon">${renderIcon(product, 'sm')}</span>
       <span class="name">${escapeHtml(product.name)}</span>
+      ${price ? `<span class="price-chip">${escapeHtml(formatEuro(price.price))}</span>` : ''}
       ${existing ? `<span class="qty-tag">×${existing.qty}</span>` : ''}
     </button>
   `
@@ -525,9 +558,11 @@ function bindStoreSelects() {
 function softRerender() {
   const lista = app.querySelector('[data-view-panel="lista"]')
   const catalogo = app.querySelector('[data-view-panel="catalogo"]')
+  const tickets = app.querySelector('[data-view-panel="tickets"]')
   const historial = app.querySelector('[data-view-panel="historial"]')
   if (view === 'lista' && lista) lista.innerHTML = renderLista()
   if (view === 'catalogo' && catalogo) catalogo.innerHTML = renderCatalogo()
+  if (view === 'tickets' && tickets) tickets.innerHTML = renderTickets()
   if (view === 'historial' && historial) historial.innerHTML = renderHistorial()
 
   const search = app.querySelector('#search')
@@ -539,7 +574,9 @@ function softRerender() {
           ? historyDay
             ? 'Buscar en este día…'
             : 'Buscar día o producto…'
-          : 'Buscar productos…'
+          : view === 'tickets'
+            ? 'Buscar en tickets…'
+            : 'Buscar productos…'
     if (search.value !== query) search.value = query
   }
 
@@ -616,7 +653,30 @@ function onAction(e) {
       view = btn.dataset.view
       query = ''
       historyDay = null
+      ticketDetail = null
       render()
+      break
+    case 'open-ticket':
+      ticketDetail = btn.dataset.ticket || null
+      query = ''
+      softRerender()
+      break
+    case 'close-ticket':
+      ticketDetail = null
+      query = ''
+      softRerender()
+      break
+    case 'scan-ticket':
+      openTicketScanner()
+      break
+    case 'delete-ticket':
+      if (confirm('¿Borrar este ticket?')) {
+        state.tickets = (state.tickets || []).filter((t) => t.id !== btn.dataset.ticket)
+        if (ticketDetail === btn.dataset.ticket) ticketDetail = null
+        persist()
+        showToast('Ticket borrado')
+        softRerender()
+      }
       break
     case 'open-history-day':
       historyDay = btn.dataset.day || null
@@ -1216,6 +1276,312 @@ function normalizeSearch(value) {
     .replace(/[\u0300-\u036f]/g, '')
 }
 
+function renderTickets() {
+  if (ticketDetail) return renderTicketDetail(ticketDetail)
+
+  const q = normalizeSearch(query)
+  let tickets = [...(state.tickets || [])].sort((a, b) => (b.boughtAt || 0) - (a.boughtAt || 0))
+  if (q) {
+    tickets = tickets.filter((t) => {
+      const store = normalizeSearch(getStore(t.store).name)
+      const total = String(t.total || '')
+      const items = (t.items || []).some((i) => normalizeSearch(i.name).includes(q))
+      return store.includes(q) || total.includes(q) || items
+    })
+  }
+
+  return `
+    <div class="browse-head">
+      <h2>Tickets</h2>
+      <p>Escanea el ticket con la cámara. Se guardan productos y precios.</p>
+    </div>
+    <button class="quick-add-btn" type="button" data-action="scan-ticket">
+      <span aria-hidden="true">📷</span>
+      Escanear ticket
+    </button>
+    ${
+      !(state.tickets || []).length
+        ? `<div class="empty-state">
+            <div class="emoji">🧾</div>
+            <h2>Sin tickets aún</h2>
+            <p>Enfoca el ticket en la cámara; el escaneo lee líneas y precios automáticamente.</p>
+          </div>`
+        : tickets.length
+          ? `<div class="history-day-list">
+              ${tickets
+                .map((t) => {
+                  const store = getStore(t.store)
+                  const count = (t.items || []).length
+                  return `
+                  <button class="history-day-card" type="button" data-action="open-ticket" data-ticket="${escapeAttr(t.id)}">
+                    <div class="history-day-card-main">
+                      <strong>${escapeHtml(store.name)}</strong>
+                      <span>${escapeHtml(formatDayLabel(dayKey(t.boughtAt)))} · ${count} producto${count === 1 ? '' : 's'}</span>
+                    </div>
+                    <span class="history-day-card-count ticket-total">${escapeHtml(formatEuro(t.total || 0))}</span>
+                    <span class="history-day-card-chevron" aria-hidden="true">›</span>
+                  </button>`
+                })
+                .join('')}
+            </div>`
+          : `<div class="browse-head"><p>No hay resultados para “${escapeHtml(query.trim())}”</p></div>`
+    }
+  `
+}
+
+function renderTicketDetail(id) {
+  const ticket = (state.tickets || []).find((t) => t.id === id)
+  if (!ticket) {
+    ticketDetail = null
+    return renderTickets()
+  }
+  const store = getStore(ticket.store)
+  return `
+    <div class="browse-bar">
+      <button class="back-btn" type="button" data-action="close-ticket" aria-label="Volver">←</button>
+      <div class="browse-bar-title">
+        <span class="browse-bar-icon">🧾</span>
+        <div>
+          <strong>${escapeHtml(store.name)}</strong>
+          <span>${escapeHtml(formatDayLabel(dayKey(ticket.boughtAt)))} · ${escapeHtml(formatEuro(ticket.total || 0))}</span>
+        </div>
+      </div>
+    </div>
+    <div class="history-entries">
+      ${(ticket.items || [])
+        .map(
+          (line) => `
+        <article class="history-item" style="--store:${store.brand}">
+          <div class="item-info" style="padding-left:2px">
+            <strong>${escapeHtml(line.name)}${line.qty > 1 ? ` <em class="history-qty">×${line.qty}</em>` : ''}</strong>
+            <span>${escapeHtml(formatEuro(line.price))}</span>
+          </div>
+        </article>`,
+        )
+        .join('')}
+    </div>
+    <div class="custom-row">
+      <button class="danger-btn" type="button" data-action="delete-ticket" data-ticket="${escapeAttr(ticket.id)}" style="width:100%">Borrar ticket</button>
+    </div>
+  `
+}
+
+async function openTicketScanner() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    showToast('Este dispositivo no permite cámara')
+    return
+  }
+  const overlay = app.querySelector('#overlay')
+  if (!overlay) return
+
+  overlay.innerHTML = `
+    <div class="sheet scanner-sheet">
+      <button class="sheet-close" type="button" id="close-scanner" aria-label="Cerrar">✕</button>
+      <h2>Escanear ticket</h2>
+      <p>Enfoca el ticket dentro del marco. El escaneo lee el texto en vivo (no es una foto de galería).</p>
+      <div class="scanner-stage">
+        <video id="scan-video" playsinline muted autoplay></video>
+        <div class="scanner-frame" aria-hidden="true"></div>
+        <div class="scanner-status" id="scan-status">Abriendo cámara…</div>
+      </div>
+      <div class="sheet-actions">
+        <button class="secondary-btn" type="button" id="close-scanner-2">Cancelar</button>
+        <button class="primary-btn" type="button" id="scan-now">Escanear ahora</button>
+      </div>
+    </div>
+  `
+  overlay.classList.add('open')
+
+  const video = overlay.querySelector('#scan-video')
+  const status = overlay.querySelector('#scan-status')
+  const close = () => {
+    clearInterval(scanLoop)
+    scanLoop = null
+    scanBusy = false
+    stopCamera()
+    closeSheet()
+  }
+  overlay.querySelector('#close-scanner').addEventListener('click', close)
+  overlay.querySelector('#close-scanner-2').addEventListener('click', close)
+
+  try {
+    status.textContent = 'Preparando escáner OCR…'
+    await preloadScanner()
+  } catch {
+    status.textContent = 'No se pudo cargar el OCR. Revisa la conexión.'
+    return
+  }
+
+  try {
+    await startCamera(video)
+    status.textContent = 'Enfoca el ticket… escaneando automáticamente'
+    const run = () => runTicketScan(video, status)
+    overlay.querySelector('#scan-now').addEventListener('click', run)
+    clearInterval(scanLoop)
+    scanLoop = setInterval(run, 2200)
+    setTimeout(run, 700)
+  } catch {
+    status.textContent = 'No se pudo abrir la cámara. Revisa permisos.'
+    showToast('Permiso de cámara denegado')
+  }
+}
+
+async function runTicketScan(video, statusEl) {
+  if (scanBusy || !video?.srcObject) return
+  if (!video.videoWidth) return
+  scanBusy = true
+  try {
+    if (statusEl) statusEl.textContent = 'Escaneando ticket…'
+    const canvas = captureFrame(video)
+    if (!canvas) {
+      scanBusy = false
+      return
+    }
+    const text = await recognizeCanvas(canvas)
+    const parsed = parseReceiptText(text)
+    if ((parsed.items || []).length >= 2) {
+      clearInterval(scanLoop)
+      scanLoop = null
+      stopCamera()
+      pendingTicketDraft = enrichTicketDraft(parsed)
+      openTicketReview(pendingTicketDraft)
+      return
+    }
+    if (statusEl) {
+      statusEl.textContent =
+        (parsed.items || []).length === 1
+          ? 'Casi… mueve un poco para leer más líneas'
+          : 'Sigue enfocando el ticket (busca líneas con precios)'
+    }
+  } catch {
+    if (statusEl) statusEl.textContent = 'Error al escanear. Reintenta.'
+  } finally {
+    scanBusy = false
+  }
+}
+
+function enrichTicketDraft(parsed) {
+  const items = (parsed.items || []).map((line) => {
+    const product = matchCatalogProduct(line.name)
+    return {
+      name: product?.name || line.name,
+      productId: product?.id || null,
+      qty: line.qty || 1,
+      price: line.price,
+    }
+  })
+  return {
+    id: crypto.randomUUID(),
+    store: parsed.store || 'todos',
+    total: parsed.total,
+    items,
+    rawText: parsed.rawText || '',
+    boughtAt: Date.now(),
+    scannedBy: state.member || '',
+  }
+}
+
+function openTicketReview(draft) {
+  const overlay = app.querySelector('#overlay')
+  if (!overlay || !draft) return
+  const store = getStore(draft.store)
+
+  overlay.innerHTML = `
+    <div class="sheet">
+      <button class="sheet-close" type="button" data-action="close-sheet" aria-label="Cerrar">✕</button>
+      <h2>Revisar ticket</h2>
+      <p>Comprueba productos y precios antes de guardar. Se actualizarán los precios del catálogo.</p>
+      <label for="ticket-store">Supermercado</label>
+      <div class="store-select-wrap" style="--store:${store.brand}">
+        <span class="store-select-dot" aria-hidden="true"></span>
+        <select id="ticket-store" class="store-select">
+          ${STORES.map(
+            (s) =>
+              `<option value="${escapeAttr(s.id)}" ${draft.store === s.id ? 'selected' : ''}>${escapeHtml(storeLabel(s, 'add'))}</option>`,
+          ).join('')}
+        </select>
+      </div>
+      <div class="ticket-lines" id="ticket-lines">
+        ${draft.items
+          .map(
+            (line, idx) => `
+          <div class="ticket-line" data-idx="${idx}">
+            <input class="ticket-name" type="text" value="${escapeAttr(line.name)}" maxlength="80" />
+            <input class="ticket-price" type="text" inputmode="decimal" value="${escapeAttr(String(line.price).replace('.', ','))}" />
+          </div>`,
+          )
+          .join('')}
+      </div>
+      <p class="ticket-total-line">Total estimado: <strong id="ticket-total">${escapeHtml(formatEuro(draft.total || 0))}</strong></p>
+      <div class="sheet-actions">
+        <button class="secondary-btn" type="button" id="rescan-ticket">Volver a escanear</button>
+        <button class="primary-btn" type="button" id="save-ticket">Guardar ticket</button>
+      </div>
+    </div>
+  `
+  overlay.classList.add('open')
+
+  const storeSelect = overlay.querySelector('#ticket-store')
+  const wrap = overlay.querySelector('.store-select-wrap')
+  storeSelect.addEventListener('change', () => {
+    const s = getStore(storeSelect.value)
+    wrap.style.setProperty('--store', s.brand)
+  })
+
+  const syncTotal = () => {
+    const prices = [...overlay.querySelectorAll('.ticket-price')].map((el) =>
+      Number(String(el.value).replace(',', '.')),
+    )
+    const total = Math.round(prices.filter((n) => Number.isFinite(n)).reduce((a, b) => a + b, 0) * 100) / 100
+    overlay.querySelector('#ticket-total').textContent = formatEuro(total)
+    return total
+  }
+  overlay.querySelectorAll('.ticket-price').forEach((el) => el.addEventListener('input', syncTotal))
+
+  overlay.querySelector('#rescan-ticket').addEventListener('click', () => {
+    closeSheet()
+    openTicketScanner()
+  })
+  overlay.querySelector('#save-ticket').addEventListener('click', () => {
+    const items = [...overlay.querySelectorAll('.ticket-line')]
+      .map((row) => {
+        const name = row.querySelector('.ticket-name').value.trim()
+        const price = Number(String(row.querySelector('.ticket-price').value).replace(',', '.'))
+        const product = matchCatalogProduct(name)
+        return {
+          name: product?.name || name,
+          productId: product?.id || null,
+          qty: 1,
+          price: Number.isFinite(price) ? Math.round(price * 100) / 100 : 0,
+        }
+      })
+      .filter((i) => i.name && i.price > 0)
+
+    if (!items.length) {
+      showToast('No hay líneas válidas')
+      return
+    }
+
+    const ticket = {
+      id: draft.id || crypto.randomUUID(),
+      store: storeSelect.value || 'todos',
+      total: syncTotal(),
+      items,
+      boughtAt: Date.now(),
+      scannedBy: state.member || '',
+    }
+    state.tickets = [ticket, ...(state.tickets || [])].slice(0, 200)
+    state.prices = applyTicketPrices(state.prices, ticket)
+    persist()
+    closeSheet()
+    view = 'tickets'
+    ticketDetail = ticket.id
+    query = ''
+    render()
+    showToast(`Ticket guardado · ${items.length} productos`)
+  })
+}
+
 function renderHistoryEntry(entry) {
   const store = getStore(entry.store)
   const visual = {
@@ -1307,6 +1673,9 @@ async function syncPull() {
   if ((remote.updatedAt || 0) > (state.updatedAt || 0)) {
     state.items = remote.items
     state.history = Array.isArray(remote.history) ? remote.history : state.history || []
+    state.tickets = Array.isArray(remote.tickets) ? remote.tickets : state.tickets || []
+    state.prices =
+      remote.prices && typeof remote.prices === 'object' ? remote.prices : state.prices || {}
     if (remote.members?.length) state.members = remote.members
     state.updatedAt = remote.updatedAt
     saveLocal(listId, state)
@@ -1491,6 +1860,10 @@ function openSheet(type) {
 function closeSheet() {
   const overlay = app.querySelector('#overlay')
   if (!overlay) return
+  clearInterval(scanLoop)
+  scanLoop = null
+  scanBusy = false
+  stopCamera()
   overlay.classList.remove('open')
   overlay.innerHTML = ''
 }
