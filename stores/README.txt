@@ -1,4 +1,4 @@
-﻿Logos de supermercado (uso identificativo en la app familiar)
+Logos de supermercado (uso identificativo en la app familiar)
 
 - mercadona.png — Wikimedia Commons: Logo Mercadona (color-300-alpha).png
 - lidl.png — Wikimedia Commons: Lidl-Logo.svg

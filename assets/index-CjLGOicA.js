@@ -310,7 +310,7 @@ var e=Object.defineProperty,t=Object.getOwnPropertyDescriptor,n=Object.getOwnPro
           aria-expanded="false"
           aria-label="${$(t?`Ver: ${we(n,`filter`)}`:`Añadir en ${n.name}`)}"
         >
-          ${P(n,`md`)}
+          ${P(n,`lg`)}
           <span class="store-logo-caret" aria-hidden="true"></span>
         </button>
         <div class="store-logo-menu" role="listbox" hidden>
@@ -325,7 +325,7 @@ var e=Object.defineProperty,t=Object.getOwnPropertyDescriptor,n=Object.getOwnPro
                 data-store="${$(n)}"
                 style="--store:${e.brand}"
               >
-                ${P(e,`md`)}
+                ${P(e,`xl`)}
               </button>`}).join(``)}
         </div>
       </div>
