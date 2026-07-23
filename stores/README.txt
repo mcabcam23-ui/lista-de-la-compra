@@ -5,4 +5,5 @@ Logos de supermercado (uso identificativo en la app familiar)
 - alimerka.png — Wikimedia Commons: Alimerka logo.svg
 - alcampo.png — Wikimedia Commons: Alcampo.png
 - carrefour.png — logo oficial Carrefour (emblema azul/rojo + wordmark)
+- masymas.png — wordmark verde (supermercados Masymas)
 - familia.png / todos.png — wordmark propio (no hay logo libre claro de Autoservicios Familia)
