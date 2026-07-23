@@ -253,7 +253,7 @@ function itemMatchesStoreFilter(item, filter) {
   return item.store === filter || item.store === 'todos'
 }
 
-/** Desplegable solo logos (PC y móvil) */
+/** Desplegable solo logos (PC y móvil) — usa <details> nativo para que siempre abra */
 function renderStoreLogoPicker(mode) {
   const isFilter = mode === 'filter'
   const selectedId = isFilter ? (storeFilter === 'all' ? 'todos' : storeFilter) : activeStore
@@ -264,19 +264,15 @@ function renderStoreLogoPicker(mode) {
   return `
     <div class="store-bar ${isFilter ? '' : 'store-bar-add'}">
       <div class="store-bar-label">${label}</div>
-      <div class="store-logo-picker" data-picker="${pickerId}">
-        <button
-          type="button"
+      <details class="store-logo-picker" data-picker="${pickerId}">
+        <summary
           class="store-logo-trigger"
-          data-action="toggle-store-picker"
-          data-picker="${pickerId}"
           style="--store:${selected.brand}"
-          aria-expanded="false"
           aria-label="${escapeAttr(isFilter ? `Ver: ${storeLabel(selected, 'filter')}` : `Añadir en ${selected.name}`)}"
         >
           ${renderStoreLogo(selected, 'lg')}
           <span class="store-logo-caret" aria-hidden="true"></span>
-        </button>
+        </summary>
         <div class="store-logo-menu" role="listbox">
           ${STORES.map((s) => {
             const value = isFilter ? (s.id === 'todos' ? 'all' : s.id) : s.id
@@ -299,7 +295,7 @@ function renderStoreLogoPicker(mode) {
               </button>`
           }).join('')}
         </div>
-      </div>
+      </details>
     </div>
   `
 }
@@ -574,19 +570,25 @@ function bindEvents() {
 }
 
 function closeStorePickers(except = null) {
-  app.querySelectorAll('.store-logo-picker.open').forEach((p) => {
+  app.querySelectorAll('details.store-logo-picker[open]').forEach((p) => {
     if (except && p === except) return
-    p.classList.remove('open')
-    p.querySelector('.store-logo-trigger')?.setAttribute('aria-expanded', 'false')
+    p.open = false
   })
 }
 
 function bindStoreSelects() {
-  // Cerrar al tocar fuera (click, no pointerdown: evita carreras con el toggle)
   if (!app.dataset.storePickerBound) {
     app.dataset.storePickerBound = '1'
+    // Solo un details abierto a la vez
+    app.addEventListener('toggle', (e) => {
+      const el = e.target
+      if (!(el instanceof HTMLDetailsElement)) return
+      if (!el.classList.contains('store-logo-picker') || !el.open) return
+      closeStorePickers(el)
+    }, true)
+    // Cerrar al tocar fuera (después del click nativo del <details>)
     document.addEventListener('click', (e) => {
-      if (e.target.closest?.('.store-logo-picker')) return
+      if (e.target.closest?.('details.store-logo-picker')) return
       closeStorePickers()
     })
   }
@@ -771,15 +773,6 @@ function onAction(e) {
       if (Date.now() < suppressProductClickUntil) break
       addProductQty(btn.dataset.product, 1)
       break
-    case 'toggle-store-picker': {
-      const picker = btn.closest('.store-logo-picker')
-      if (!picker) break
-      const willOpen = !picker.classList.contains('open')
-      closeStorePickers(willOpen ? picker : null)
-      picker.classList.toggle('open', willOpen)
-      btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false')
-      break
-    }
     case 'set-store-filter': {
       storeFilter = btn.dataset.store
       softRerender()

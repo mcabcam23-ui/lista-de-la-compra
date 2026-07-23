@@ -79,7 +79,7 @@ button {
     var(--nav-clearance)
     max(var(--page-pad), var(--safe-left));
   position: relative;
-  overflow-x: clip;
+  overflow: visible;
   box-sizing: border-box;
 }
 
@@ -1500,6 +1500,14 @@ button {
   z-index: 5;
 }
 
+.store-logo-picker > summary {
+  list-style: none;
+}
+
+.store-logo-picker > summary::-webkit-details-marker {
+  display: none;
+}
+
 .store-logo-trigger {
   display: inline-flex;
   align-items: center;
@@ -1511,6 +1519,14 @@ button {
   border: 1.5px solid color-mix(in srgb, var(--store, var(--brand)) 45%, var(--line));
   box-shadow: var(--shadow);
   touch-action: manipulation;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* iOS: el toque en hijos del summary a veces no abre el details */
+.store-logo-trigger > * {
+  pointer-events: none;
 }
 
 .store-logo-caret {
@@ -1521,13 +1537,14 @@ button {
   transform: rotate(45deg);
   margin-top: -4px;
   transition: transform 0.15s ease;
+  flex-shrink: 0;
 }
 
-.store-logo-picker.open {
+.store-logo-picker[open] {
   z-index: 80;
 }
 
-.store-logo-picker.open .store-logo-caret {
+.store-logo-picker[open] .store-logo-caret {
   transform: rotate(225deg);
   margin-top: 4px;
 }
@@ -1537,7 +1554,7 @@ button {
   z-index: 80;
   top: calc(100% + 8px);
   left: 0;
-  display: none;
+  display: grid;
   grid-template-columns: repeat(3, 88px);
   gap: 12px;
   padding: 14px;
@@ -1545,10 +1562,6 @@ button {
   background: var(--surface);
   border: 1px solid var(--line);
   box-shadow: 0 14px 32px rgba(20, 40, 30, 0.18);
-}
-
-.store-logo-picker.open .store-logo-menu {
-  display: grid;
 }
 
 .store-logo-option {
