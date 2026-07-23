@@ -1394,9 +1394,92 @@ button {
   color: var(--muted);
 }
 
+.reales-product-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.reales-product-wrap .product-card {
+  width: 100%;
+  margin: 0;
+}
+
+.reales-section-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 34px;
+  padding: 4px 8px;
+  border-radius: 10px;
+  border: 1px dashed color-mix(in srgb, var(--brand) 35%, var(--line));
+  background: color-mix(in srgb, var(--brand-soft) 55%, #fff);
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  font-weight: 700;
+  touch-action: manipulation;
+}
+
+.reales-section-chip:active {
+  transform: scale(0.97);
+  background: var(--brand-soft);
+}
+
+.reales-section-chip-ico {
+  line-height: 0;
+  flex-shrink: 0;
+}
+
+.reales-section-chip-ico .cat-svg.size-sm {
+  width: 16px;
+  height: 16px;
+}
+
 .reales-product .price-under {
   font-size: 0.68rem;
   white-space: nowrap;
+}
+
+.section-pick-sheet .section-pick-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  max-height: min(58dvh, 420px);
+  overflow: auto;
+  padding-bottom: 4px;
+}
+
+.section-pick-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 8px;
+  border-radius: 14px;
+  background: var(--bg);
+  border: 1.5px solid var(--line);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.15;
+  touch-action: manipulation;
+}
+
+.section-pick-card:active {
+  transform: scale(0.96);
+}
+
+.section-pick-card.active {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent);
+}
+
+.section-pick-ico {
+  line-height: 0;
 }
 
 .aisle-icon {

@@ -37,6 +37,7 @@ import {
   listPricedProductsByStore,
   applyTicketPrices,
   resolveTicketCatalog,
+  normalizeText,
 } from './receipt.js'
 import {
   startCamera,
@@ -59,6 +60,9 @@ if (!Array.isArray(state.history)) state.history = []
 if (!Array.isArray(state.tickets)) state.tickets = []
 if (!Array.isArray(state.extraProducts)) state.extraProducts = []
 if (!state.prices || typeof state.prices !== 'object') state.prices = {}
+if (!state.sectionOverrides || typeof state.sectionOverrides !== 'object') {
+  state.sectionOverrides = {}
+}
 setExtraProducts(state.extraProducts)
 let view = 'lista'
 let category = null // null = pasillos (rejilla)
@@ -479,8 +483,7 @@ function renderRealesBrowse() {
 function groupRealEntriesBySection(entries) {
   const map = new Map()
   for (const entry of entries || []) {
-    const product = entry.productId ? getProductById(entry.productId) : null
-    const catId = product?.category || guessCategory(entry.name || '').category || 'despensa'
+    const catId = resolveRealCategoryId(entry)
     if (!map.has(catId)) map.set(catId, [])
     map.get(catId).push(entry)
   }
@@ -504,6 +507,24 @@ function groupRealEntriesBySection(entries) {
   return sections
 }
 
+function realSectionKey(entryOrId, name) {
+  if (entryOrId && typeof entryOrId === 'object') {
+    if (entryOrId.productId) return `id:${entryOrId.productId}`
+    return `name:${normalizeText(entryOrId.name)}`
+  }
+  if (entryOrId) return `id:${entryOrId}`
+  return `name:${normalizeText(name)}`
+}
+
+function resolveRealCategoryId(entry) {
+  const key = realSectionKey(entry)
+  const override = state.sectionOverrides?.[key]
+  if (override && getCategory(override)) return override
+  if (entry.category && getCategory(entry.category)) return entry.category
+  const product = entry.productId ? getProductById(entry.productId) : null
+  return product?.category || guessCategory(entry.name || '').category || 'despensa'
+}
+
 function renderRealProductCard(entry, storeId) {
   const product = entry.productId ? getProductById(entry.productId) : null
   const visual = product || {
@@ -518,15 +539,51 @@ function renderRealProductCard(entry, storeId) {
         (i) => !i.productId && i.name === entry.name && i.store === storeId,
       )
   const priceLabel = formatPriceLabel(entry)
+  const cat = getCategory(resolveRealCategoryId(entry))
+  const moveBtn = `
+    <button
+      type="button"
+      class="reales-section-chip"
+      data-action="open-real-section"
+      data-product="${escapeAttr(productId || '')}"
+      data-name="${escapeAttr(entry.name || product?.name || '')}"
+      aria-label="Cambiar sección de ${escapeAttr(entry.name || product?.name || 'producto')}"
+      title="Cambiar sección"
+    >
+      <span class="reales-section-chip-ico">${renderCategoryIcon(cat?.id || 'despensa', 'sm')}</span>
+      <span>${escapeHtml(cat?.name || 'Sección')}</span>
+    </button>`
 
   if (!productId) {
-    // Producto solo por nombre (sin id): añadir como custom en ese súper
     return `
+      <div class="reales-product-wrap">
+        <button
+          class="product-card reales-product ${existing ? 'in-list' : ''}"
+          type="button"
+          data-action="add-real-named"
+          data-name="${escapeAttr(entry.name)}"
+          data-store="${escapeAttr(storeId)}"
+          data-longpress="add-qty"
+          title="Toque: +1 · Mantener: elegir cantidad"
+        >
+          <span class="product-icon">
+            ${renderIcon(visual, 'sm')}
+            <span class="price-under">${escapeHtml(priceLabel)}</span>
+          </span>
+          <span class="name">${escapeHtml(entry.name)}</span>
+          ${existing ? `<span class="qty-tag">×${existing.qty}</span>` : ''}
+        </button>
+        ${moveBtn}
+      </div>`
+  }
+
+  return `
+    <div class="reales-product-wrap">
       <button
         class="product-card reales-product ${existing ? 'in-list' : ''}"
         type="button"
-        data-action="add-real-named"
-        data-name="${escapeAttr(entry.name)}"
+        data-action="toggle-product"
+        data-product="${escapeAttr(productId)}"
         data-store="${escapeAttr(storeId)}"
         data-longpress="add-qty"
         title="Toque: +1 · Mantener: elegir cantidad"
@@ -535,28 +592,11 @@ function renderRealProductCard(entry, storeId) {
           ${renderIcon(visual, 'sm')}
           <span class="price-under">${escapeHtml(priceLabel)}</span>
         </span>
-        <span class="name">${escapeHtml(entry.name)}</span>
+        <span class="name">${escapeHtml(product?.name || entry.name)}</span>
         ${existing ? `<span class="qty-tag">×${existing.qty}</span>` : ''}
-      </button>`
-  }
-
-  return `
-    <button
-      class="product-card reales-product ${existing ? 'in-list' : ''}"
-      type="button"
-      data-action="toggle-product"
-      data-product="${escapeAttr(productId)}"
-      data-store="${escapeAttr(storeId)}"
-      data-longpress="add-qty"
-      title="Toque: +1 · Mantener: elegir cantidad"
-    >
-      <span class="product-icon">
-        ${renderIcon(visual, 'sm')}
-        <span class="price-under">${escapeHtml(priceLabel)}</span>
-      </span>
-      <span class="name">${escapeHtml(product?.name || entry.name)}</span>
-      ${existing ? `<span class="qty-tag">×${existing.qty}</span>` : ''}
-    </button>`
+      </button>
+      ${moveBtn}
+    </div>`
 }
 
 function renderCategoryBrowse() {
@@ -943,6 +983,13 @@ function onAction(e) {
       addNamedRealProduct(btn.dataset.name, btn.dataset.store, 1)
       break
     }
+    case 'open-real-section':
+      openRealSectionSheet(btn.dataset.product || '', btn.dataset.name || '')
+      break
+    case 'set-real-section':
+      setRealProductSection(btn.dataset.product || '', btn.dataset.name || '', btn.dataset.category)
+      closeSheet()
+      break
     case 'set-store-filter': {
       storeFilter = btn.dataset.store
       softRerender()
@@ -1065,6 +1112,89 @@ function addNamedRealProduct(name, storeOverride, qty = 1) {
   const product = created.product
   if (!product) return
   addProductQty(product.id, amount, storeId)
+}
+
+function openRealSectionSheet(productId, name) {
+  const label = name || getProductById(productId)?.name || 'Producto'
+  const current = resolveRealCategoryId({ productId: productId || null, name: label })
+  const overlay = app.querySelector('#overlay')
+  if (!overlay) return
+
+  overlay.innerHTML = `
+    <div class="sheet section-pick-sheet">
+      <button class="sheet-close" type="button" data-action="close-sheet" aria-label="Cerrar">✕</button>
+      <h2>Cambiar sección</h2>
+      <p>Elige dónde va <strong>${escapeHtml(label)}</strong>. Un toque y listo.</p>
+      <div class="section-pick-grid">
+        ${CATEGORIES.map((cat) => {
+          const active = cat.id === current
+          return `
+            <button
+              type="button"
+              class="section-pick-card ${active ? 'active' : ''}"
+              data-action="set-real-section"
+              data-category="${escapeAttr(cat.id)}"
+              data-product="${escapeAttr(productId || '')}"
+              data-name="${escapeAttr(label)}"
+            >
+              <span class="section-pick-ico">${renderCategoryIcon(cat.id, 'md')}</span>
+              <span>${escapeHtml(cat.name)}</span>
+            </button>`
+        }).join('')}
+      </div>
+    </div>
+  `
+  overlay.classList.add('open')
+}
+
+function setRealProductSection(productId, name, categoryId) {
+  if (!getCategory(categoryId)) return
+  if (!state.sectionOverrides || typeof state.sectionOverrides !== 'object') {
+    state.sectionOverrides = {}
+  }
+  const key = realSectionKey(productId || null, name)
+  state.sectionOverrides[key] = categoryId
+
+  if (productId) {
+    const idx = (state.extraProducts || []).findIndex((p) => p.id === productId)
+    if (idx >= 0) {
+      const cat = getCategory(categoryId)
+      const guessed = guessCategory(name || state.extraProducts[idx].name)
+      const sub =
+        guessed.category === categoryId
+          ? guessed.sub
+          : cat?.subs?.[0]?.id || categoryId
+      state.extraProducts[idx] = {
+        ...state.extraProducts[idx],
+        category: categoryId,
+        sub,
+      }
+      setExtraProducts(state.extraProducts)
+    }
+  }
+
+  const nameKey = normalizeText(name)
+  for (const store of STORES) {
+    if (store.id === 'todos') continue
+    const bucket = state.prices?.[store.id]
+    if (!bucket || typeof bucket !== 'object') continue
+    for (const entry of Object.values(bucket)) {
+      if (!entry || typeof entry !== 'object') continue
+      const matchId = productId && entry.productId === productId
+      const matchName = !productId && normalizeText(entry.name) === nameKey
+      if (matchId || matchName) entry.category = categoryId
+    }
+  }
+
+  persist()
+  showToast(`${labelShort(name)} → ${getCategory(categoryId).name}`)
+  vibrate()
+  softRerender()
+}
+
+function labelShort(name) {
+  const n = String(name || 'Producto').trim()
+  return n.length > 22 ? `${n.slice(0, 20)}…` : n
 }
 
 /** Fija la cantidad exacta (no suma). 0 = quitar de este súper. */
@@ -2091,6 +2221,10 @@ async function syncPull() {
     state.extraProducts = Array.isArray(remote.extraProducts)
       ? remote.extraProducts
       : state.extraProducts || []
+    state.sectionOverrides =
+      remote.sectionOverrides && typeof remote.sectionOverrides === 'object'
+        ? remote.sectionOverrides
+        : state.sectionOverrides || {}
     setExtraProducts(state.extraProducts)
     if (remote.members?.length) state.members = remote.members
     state.updatedAt = remote.updatedAt

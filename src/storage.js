@@ -73,6 +73,10 @@ export function loadLocal(listId) {
       tickets: Array.isArray(data.tickets) ? data.tickets : [],
       prices: data.prices && typeof data.prices === 'object' ? data.prices : {},
       extraProducts: Array.isArray(data.extraProducts) ? data.extraProducts : [],
+      sectionOverrides:
+        data.sectionOverrides && typeof data.sectionOverrides === 'object'
+          ? data.sectionOverrides
+          : {},
     }
   } catch {
     return defaultState()
@@ -88,6 +92,7 @@ export function saveLocal(listId, state) {
       tickets: state.tickets || [],
       prices: state.prices || {},
       extraProducts: state.extraProducts || [],
+      sectionOverrides: state.sectionOverrides || {},
       member: state.member,
       members: state.members,
       updatedAt: state.updatedAt || Date.now(),
@@ -102,6 +107,7 @@ export function defaultState() {
     tickets: [],
     prices: {},
     extraProducts: [],
+    sectionOverrides: {},
     member: localStorage.getItem('compra:member') || '',
     members: JSON.parse(localStorage.getItem('compra:members') || '[]'),
     updatedAt: 0,
@@ -176,6 +182,7 @@ export async function pullRemote(listId) {
         prices: {},
         extraProducts: [],
         members: [],
+        sectionOverrides: {},
         updatedAt: 0,
       }
     }
@@ -187,6 +194,10 @@ export async function pullRemote(listId) {
       prices: data.prices && typeof data.prices === 'object' ? data.prices : {},
       extraProducts: Array.isArray(data.extraProducts) ? data.extraProducts : [],
       members: Array.isArray(data.members) ? data.members : [],
+      sectionOverrides:
+        data.sectionOverrides && typeof data.sectionOverrides === 'object'
+          ? data.sectionOverrides
+          : {},
       updatedAt: data.updatedAt || 0,
     }
   } catch {
@@ -205,6 +216,7 @@ export async function pushRemote(listId, state) {
       tickets: state.tickets || [],
       prices: state.prices || {},
       extraProducts: state.extraProducts || [],
+      sectionOverrides: state.sectionOverrides || {},
       members: state.members,
       updatedAt: state.updatedAt || Date.now(),
     }
