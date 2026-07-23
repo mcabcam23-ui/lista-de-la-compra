@@ -32,6 +32,8 @@ import {
   matchCatalogProduct,
   getPriceEntry,
   formatEuro,
+  formatPriceLabel,
+  listPricedProductsByStore,
   applyTicketPrices,
   resolveTicketCatalog,
 } from './receipt.js'
@@ -323,6 +325,7 @@ function renderListItem(item) {
   const who = item.addedBy ? `Añadido por ${item.addedBy}` : 'En la lista'
   const when = item.addedAt ? ` · ${formatTime(item.addedAt)}` : ''
   const price = getPriceEntry(state.prices, item.productId, name, item.store)
+  const priceLabel = price ? formatPriceLabel(price) : ''
 
   return `
     <article class="list-item" data-id="${escapeAttr(item.id)}" style="--store:${store.brand}">
@@ -333,7 +336,7 @@ function renderListItem(item) {
             <strong>${escapeHtml(name)}</strong>
             <span class="item-meta">${escapeHtml(who + when)}</span>
             <span class="item-price ${price ? '' : 'is-empty'}">${
-              price ? escapeHtml(formatEuro(price.price)) : '0,00€'
+              priceLabel || '0,00€'
             }</span>
           </div>
           <div class="item-side">
@@ -366,6 +369,10 @@ function renderCatalogo() {
     return renderSearchResults()
   }
 
+  if (category === '__reales__') {
+    return renderRealesBrowse()
+  }
+
   if (!category) {
     return renderAisles()
   }
@@ -374,12 +381,23 @@ function renderCatalogo() {
 }
 
 function renderAisles() {
+  const realesCount = listPricedProductsByStore(state.prices).reduce(
+    (n, g) => n + g.entries.length,
+    0,
+  )
+
   return `
     ${renderStorePicker('add')}
     <div class="browse-head">
       <h2>Pasillos</h2>
       <p>Añadiendo en <strong>${escapeHtml(getStore(activeStore).name)}</strong></p>
     </div>
+    <button class="aisle-card reales-card" type="button" data-action="set-category" data-category="__reales__">
+      <span class="aisle-icon">🧾</span>
+      <span class="aisle-name">Productos reales</span>
+      <span class="aisle-count">${realesCount}</span>
+    </button>
+    <p class="reales-hint">Precios sacados de tickets, por supermercado${realesCount ? '' : ' · escanea un ticket para empezar'}</p>
     <div class="aisle-grid">
       ${CATEGORIES.map((c) => {
         const count = getProductsByCategory(c.id).length
@@ -398,6 +416,104 @@ function renderAisles() {
       </div>
     </div>
   `
+}
+
+function renderRealesBrowse() {
+  const groups = listPricedProductsByStore(state.prices)
+  const total = groups.reduce((n, g) => n + g.entries.length, 0)
+
+  return `
+    <div class="browse-bar">
+      <button class="back-btn" type="button" data-action="set-category" data-category="" aria-label="Volver">←</button>
+      <div class="browse-bar-title">
+        <span class="browse-bar-icon">🧾</span>
+        <div>
+          <strong>Productos reales</strong>
+          <span>${total} con precio de ticket</span>
+        </div>
+      </div>
+    </div>
+    ${
+      groups.length
+        ? groups
+            .map((group) => {
+              return `
+              <section class="reales-store-group" style="--store:${group.store.brand}">
+                <div class="reales-store-head">
+                  ${renderStoreLogo(group.store, 'sm')}
+                  <strong>${escapeHtml(group.store.name)}</strong>
+                  <em>${group.entries.length}</em>
+                </div>
+                <div class="product-grid">
+                  ${group.entries
+                    .map((entry) => renderRealProductCard(entry, group.store.id))
+                    .join('')}
+                </div>
+              </section>`
+            })
+            .join('')
+        : `<div class="empty-state">
+            <div class="emoji">🧾</div>
+            <h2>Aún no hay productos reales</h2>
+            <p>Escanea un ticket en la pestaña Tickets. Los productos y precios quedarán aquí, separados por supermercado.</p>
+          </div>`
+    }
+  `
+}
+
+function renderRealProductCard(entry, storeId) {
+  const product = entry.productId ? getProductById(entry.productId) : null
+  const visual = product || {
+    name: entry.name,
+    emoji: '🛒',
+    icon: null,
+  }
+  const productId = product?.id || entry.productId
+  const existing = productId
+    ? state.items.find((i) => i.productId === productId && i.store === storeId)
+    : state.items.find(
+        (i) => !i.productId && i.name === entry.name && i.store === storeId,
+      )
+  const priceLabel = formatPriceLabel(entry)
+
+  if (!productId) {
+    // Producto solo por nombre (sin id): añadir como custom en ese súper
+    return `
+      <button
+        class="product-card reales-product ${existing ? 'in-list' : ''}"
+        type="button"
+        data-action="add-real-named"
+        data-name="${escapeAttr(entry.name)}"
+        data-store="${escapeAttr(storeId)}"
+        data-longpress="add-qty"
+        title="Toque: +1 · Mantener: elegir cantidad"
+      >
+        <span class="product-icon">
+          ${renderIcon(visual, 'sm')}
+          <span class="price-under">${escapeHtml(priceLabel)}</span>
+        </span>
+        <span class="name">${escapeHtml(entry.name)}</span>
+        ${existing ? `<span class="qty-tag">×${existing.qty}</span>` : ''}
+      </button>`
+  }
+
+  return `
+    <button
+      class="product-card reales-product ${existing ? 'in-list' : ''}"
+      type="button"
+      data-action="toggle-product"
+      data-product="${escapeAttr(productId)}"
+      data-store="${escapeAttr(storeId)}"
+      data-longpress="add-qty"
+      title="Toque: +1 · Mantener: elegir cantidad"
+    >
+      <span class="product-icon">
+        ${renderIcon(visual, 'sm')}
+        <span class="price-under">${escapeHtml(priceLabel)}</span>
+      </span>
+      <span class="name">${escapeHtml(product?.name || entry.name)}</span>
+      ${existing ? `<span class="qty-tag">×${existing.qty}</span>` : ''}
+    </button>`
 }
 
 function renderCategoryBrowse() {
@@ -505,7 +621,7 @@ function renderProductCard(product) {
     <button class="product-card ${existing ? 'in-list' : ''}" type="button" data-action="toggle-product" data-product="${escapeAttr(product.id)}" data-longpress="add-qty" title="Toque: +1 · Mantener: elegir cantidad">
       <span class="product-icon">
         ${renderIcon(product, 'sm')}
-        ${price ? `<span class="price-under">${escapeHtml(formatEuro(price.price))}</span>` : ''}
+        ${price ? `<span class="price-under">${escapeHtml(formatPriceLabel(price))}</span>` : ''}
       </span>
       <span class="name">${escapeHtml(product.name)}</span>
       ${existing ? `<span class="qty-tag">×${existing.qty}</span>` : ''}
@@ -660,7 +776,13 @@ function bindLongPress() {
           suppressProductClickUntil = Date.now() + 800
           clearTimer()
           el.classList.add('long-pressed')
-          if (el.dataset.product) openQtySheet(el.dataset.product)
+          if (el.dataset.product) openQtySheet(el.dataset.product, el.dataset.store)
+          else if (el.dataset.name) {
+            const created = upsertExtraProduct(state.extraProducts, el.dataset.name)
+            state.extraProducts = created.list
+            setExtraProducts(state.extraProducts)
+            if (created.product) openQtySheet(created.product.id, el.dataset.store)
+          }
           vibrate([12, 30, 12])
         }, LONG_PRESS_MS)
       },
@@ -771,8 +893,13 @@ function onAction(e) {
     case 'toggle-product':
       // El +1 lo hace el toque en pointerup; el click solo si no hubo pointer (accesibilidad)
       if (Date.now() < suppressProductClickUntil) break
-      addProductQty(btn.dataset.product, 1)
+      addProductQty(btn.dataset.product, 1, btn.dataset.store)
       break
+    case 'add-real-named': {
+      if (Date.now() < suppressProductClickUntil) break
+      addNamedRealProduct(btn.dataset.name, btn.dataset.store, 1)
+      break
+    }
     case 'set-store-filter': {
       storeFilter = btn.dataset.store
       softRerender()
@@ -848,12 +975,20 @@ function toggleProduct(productId) {
   addProductQty(productId, 1)
 }
 
-function addProductQty(productId, qty) {
+function resolveAddStore(storeOverride) {
+  if (storeOverride && storeOverride !== 'todos' && STORES.some((s) => s.id === storeOverride)) {
+    return storeOverride
+  }
+  return activeStore
+}
+
+function addProductQty(productId, qty, storeOverride) {
   const amount = Math.max(1, Math.min(99, Number(qty) || 1))
   const product = getProductById(productId)
   if (!product) return
+  const storeId = resolveAddStore(storeOverride)
   const existing = state.items.find(
-    (i) => i.productId === productId && i.store === activeStore,
+    (i) => i.productId === productId && i.store === storeId,
   )
   if (existing) {
     existing.qty += amount
@@ -865,24 +1000,38 @@ function addProductQty(productId, qty) {
       emoji: product.emoji,
       icon: product.icon || null,
       qty: amount,
-      store: activeStore,
+      store: storeId,
       addedBy: state.member || '',
       addedAt: Date.now(),
     })
   }
   persist()
-  showToast(`＋${amount} ${product.name} · ${getStore(activeStore).name}`)
+  showToast(`＋${amount} ${product.name} · ${getStore(storeId).name}`)
   vibrate()
   softRerender()
 }
 
+function addNamedRealProduct(name, storeOverride, qty = 1) {
+  const clean = String(name || '').trim()
+  if (!clean) return
+  const storeId = resolveAddStore(storeOverride)
+  const amount = Math.max(1, Math.min(99, Number(qty) || 1))
+  const created = upsertExtraProduct(state.extraProducts, clean)
+  state.extraProducts = created.list
+  setExtraProducts(state.extraProducts)
+  const product = created.product
+  if (!product) return
+  addProductQty(product.id, amount, storeId)
+}
+
 /** Fija la cantidad exacta (no suma). 0 = quitar de este súper. */
-function setProductQty(productId, qty) {
+function setProductQty(productId, qty, storeOverride) {
   const product = getProductById(productId)
   if (!product) return
+  const storeId = resolveAddStore(storeOverride)
   const amount = Math.max(0, Math.min(99, Number(qty) || 0))
   const existing = state.items.find(
-    (i) => i.productId === productId && i.store === activeStore,
+    (i) => i.productId === productId && i.store === storeId,
   )
 
   if (amount <= 0) {
@@ -906,22 +1055,23 @@ function setProductQty(productId, qty) {
       emoji: product.emoji,
       icon: product.icon || null,
       qty: amount,
-      store: activeStore,
+      store: storeId,
       addedBy: state.member || '',
       addedAt: Date.now(),
     })
   }
   persist()
-  showToast(`${amount}× ${product.name} · ${getStore(activeStore).name}`)
+  showToast(`${amount}× ${product.name} · ${getStore(storeId).name}`)
   vibrate()
   softRerender()
 }
 
-function openQtySheet(productId) {
+function openQtySheet(productId, storeOverride) {
   const product = getProductById(productId)
   if (!product) return
+  const storeId = resolveAddStore(storeOverride)
   const existing = state.items.find(
-    (i) => i.productId === productId && i.store === activeStore,
+    (i) => i.productId === productId && i.store === storeId,
   )
   const editing = Boolean(existing)
   const totalOfProduct = state.items
@@ -940,8 +1090,8 @@ function openQtySheet(productId) {
           <h2>${escapeHtml(product.name)}</h2>
           <p>${
             editing
-              ? `Cambiar cantidad en <strong>${escapeHtml(getStore(activeStore).name)}</strong> · ahora ${existing.qty}`
-              : `Añadir en <strong>${escapeHtml(getStore(activeStore).name)}</strong>`
+              ? `Cambiar cantidad en <strong>${escapeHtml(getStore(storeId).name)}</strong> · ahora ${existing.qty}`
+              : `Añadir en <strong>${escapeHtml(getStore(storeId).name)}</strong>`
           }</p>
         </div>
       </div>
@@ -1003,7 +1153,7 @@ function openQtySheet(productId) {
   })
   confirmBtn.addEventListener('click', () => {
     closeSheet()
-    setProductQty(productId, qtyDraft)
+    setProductQty(productId, qtyDraft, storeId)
   })
   const deleteBtn = overlay.querySelector('#delete-product')
   if (deleteBtn) {
@@ -1663,12 +1813,13 @@ function openTicketReview(draft) {
                 name: line.name,
               }
               return `
-            <div class="receipt-row ticket-line${line.isNew ? ' receipt-row--new' : ''}" data-idx="${idx}" data-qty="${escapeAttr(String(line.qty || 1))}">
+            <div class="receipt-row ticket-line${line.isNew ? ' receipt-row--new' : ''}" data-idx="${idx}" data-qty="${escapeAttr(String(line.qty || 1))}" data-unit="${escapeAttr(line.unit || 'ud')}" data-unit-price="${escapeAttr(String(line.unitPrice ?? ''))}">
               <span class="receipt-ico">${renderIcon(visual, 'sm')}</span>
               <input class="ticket-name receipt-name" type="text" value="${escapeAttr(line.name)}" maxlength="80" aria-label="Producto" />
               ${line.isNew ? '<span class="receipt-new">nuevo</span>' : ''}
+              ${line.unit === 'kg' ? '<span class="receipt-unit">€/kg</span>' : ''}
               <span class="receipt-lead" aria-hidden="true"></span>
-              <input class="ticket-price receipt-price" type="text" inputmode="decimal" value="${escapeAttr(String(line.price).replace('.', ','))}" aria-label="Precio" />
+              <input class="ticket-price receipt-price" type="text" inputmode="decimal" value="${escapeAttr(String(line.price).replace('.', ','))}" aria-label="Precio línea" />
             </div>`
             })
             .join('')}
@@ -1724,10 +1875,20 @@ function openTicketReview(draft) {
         const name = row.querySelector('.ticket-name').value.trim()
         const price = Number(String(row.querySelector('.ticket-price').value).replace(',', '.'))
         const qty = Math.max(1, Number(row.dataset.qty) || 1)
+        const unit = row.dataset.unit === 'kg' ? 'kg' : 'ud'
+        let unitPrice = Number(String(row.dataset.unitPrice || '').replace(',', '.'))
+        if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+          unitPrice = unit === 'kg' ? null : qty > 1 ? price / qty : price
+        }
         return {
           name,
           qty,
           price: Number.isFinite(price) ? Math.round(price * 100) / 100 : 0,
+          unit,
+          unitPrice:
+            unitPrice != null && Number.isFinite(unitPrice)
+              ? Math.round(unitPrice * 100) / 100
+              : null,
         }
       })
       .filter((i) => i.name && i.price > 0)
@@ -1746,12 +1907,14 @@ function openTicketReview(draft) {
       id: draft.id || crypto.randomUUID(),
       store: storeId,
       total: syncTotal(),
-      items: resolved.items.map(({ name, productId, qty, price, emoji }) => ({
+      items: resolved.items.map(({ name, productId, qty, price, emoji, unit, unitPrice }) => ({
         name,
         productId,
         qty,
         price,
         emoji,
+        unit,
+        unitPrice,
       })),
       boughtAt: Date.now(),
       scannedBy: state.member || '',

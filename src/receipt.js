@@ -65,6 +65,17 @@ function coalesceBrokenLines(lines) {
       i += 1
       continue
     }
+    // Nombre + "0,450 kg x 2,99" / "0,450 kg x 2,99 1,35"
+    if (
+      next &&
+      looksLikeProductName(line) &&
+      !PRICE_RE.test(line) &&
+      /^\d+[.,]\d+\s*kg\b/i.test(next)
+    ) {
+      out.push(`${line} ${next}`)
+      i += 1
+      continue
+    }
     if (
       next &&
       looksLikeProductName(line) &&
@@ -103,13 +114,46 @@ function parseItemLine(line) {
     .replace(/\s+/g, ' ')
     .trim()
 
+  // Al peso: "PLATANOS 0,450 kg x 2,49" · "PLATANOS 0,450kg x 2,49 €/kg 1,12"
+  let m = cleaned.match(
+    /^(.+?)\s+(\d+[.,]\d+)\s*kg\s*[x×*]\s*(\d+[.,]\d{2})(?:\s*(?:€|e|eur)?\/?\s*kg)?(?:\s+(\d+[.,]\d{2}))?$/i,
+  )
+  if (m && !isPriceOnly(m[1])) {
+    const weightKg = parseMoney(m[2])
+    const pricePerKg = parseMoney(m[3])
+    const lineTotal = m[4]
+      ? parseMoney(m[4])
+      : Math.round(weightKg * pricePerKg * 100) / 100
+    return {
+      name: cleanName(m[1]),
+      price: lineTotal,
+      qty: 1,
+      unit: 'kg',
+      unitPrice: pricePerKg,
+      weightKg,
+    }
+  }
+
+  // Solo precio/kg: " entrecot 12,99 €/kg" · " entrecot 12,99/kg"
+  m = cleaned.match(/^(.+?)\s+(\d+[.,]\d{2})\s*(?:€|e|eur)?\s*\/\s*kg$/i)
+  if (m && !isPriceOnly(m[1])) {
+    return {
+      name: cleanName(m[1]),
+      price: parseMoney(m[2]),
+      qty: 1,
+      unit: 'kg',
+      unitPrice: parseMoney(m[2]),
+    }
+  }
+
   // "LECHE ENTERA 1,25" · "LECHE ..... 1,25"
-  let m = cleaned.match(/^(.+?)\s+(\d+[.,]\d{2})$/)
+  m = cleaned.match(/^(.+?)\s+(\d+[.,]\d{2})$/)
   if (m && !isPriceOnly(m[1])) {
     return {
       name: cleanName(m[1]),
       price: parseMoney(m[2]),
       qty: extractQty(m[1]) || 1,
+      unit: 'ud',
     }
   }
 
@@ -120,6 +164,7 @@ function parseItemLine(line) {
       name: cleanName(m[2]),
       price: parseMoney(m[1]),
       qty: extractQty(m[2]) || 1,
+      unit: 'ud',
     }
   }
 
@@ -130,6 +175,7 @@ function parseItemLine(line) {
       name: cleanName(m[1]),
       qty: Number(m[2]) || 1,
       price: parseMoney(m[3]),
+      unit: 'ud',
     }
   }
 
@@ -140,6 +186,7 @@ function parseItemLine(line) {
       name: cleanName(m[2]),
       qty: Number(m[1]) || 1,
       price: parseMoney(m[3]),
+      unit: 'ud',
     }
   }
 
@@ -178,43 +225,56 @@ function dedupeItems(items) {
       const prev = map.get(key)
       prev.qty += item.qty || 1
       prev.price = Math.round((prev.price + (item.price || 0)) * 100) / 100
+      if (item.unit === 'kg') {
+        prev.unit = 'kg'
+        if (item.unitPrice) prev.unitPrice = item.unitPrice
+      }
     } else {
-      map.set(key, { ...item, qty: item.qty || 1 })
+      map.set(key, {
+        ...item,
+        qty: item.qty || 1,
+        unit: item.unit === 'kg' ? 'kg' : 'ud',
+      })
     }
   }
   return [...map.values()]
 }
 
 function detectStore(lines) {
-  const head = normalizeText(lines.slice(0, 12).join(' '))
+  const head = normalizeText(lines.slice(0, 14).join(' '))
   const all = normalizeText(lines.join(' '))
   const blob = `${head} ${all}`
 
+  // Orden: claves más específicas primero (evitar falsos positivos)
   const aliases = [
     { id: 'mercadona', keys: ['mercadona', 'hacendado'] },
     { id: 'lidl', keys: ['lidl'] },
     { id: 'alimerka', keys: ['alimerka'] },
     { id: 'alcampo', keys: ['alcampo', 'auchan'] },
     { id: 'carrefour', keys: ['carrefour'] },
-    { id: 'familia', keys: ['supermercados familia', 'familia'] },
+    { id: 'masymas', keys: ['masymas', 'mas y mas', 'masy mas', 'supermasymas', 'hijos de luis rodriguez'] },
+    { id: 'familia', keys: ['autoservicios familia', 'supermercados familia', 'super familia'] },
   ]
 
   let best = { id: 'todos', score: 0 }
   for (const entry of aliases) {
     for (const key of entry.keys) {
       if (!blob.includes(key)) continue
-      const inHead = head.includes(key) ? 3 : 1
-      const score = inHead + key.length / 20
+      const inHead = head.includes(key) ? 4 : 1
+      const specificity = key.length / 12
+      const score = inHead + specificity
       if (score > best.score) best = { id: entry.id, score }
     }
   }
   if (best.score > 0) return best.id
 
+  // Fallback por nombre de tienda (excepto "familia" suelto: demasiado genérico)
   for (const store of STORES) {
-    if (store.id === 'todos') continue
+    if (store.id === 'todos' || store.id === 'familia') continue
     const name = normalizeText(store.name)
     if (head.includes(name) || blob.includes(name)) return store.id
   }
+  if (/\bfamilia\b/.test(head) && !blob.includes('masymas')) return 'familia'
   return 'todos'
 }
 
@@ -290,6 +350,50 @@ export function formatEuro(value) {
   return `${n.toFixed(2).replace('.', ',')}€`
 }
 
+/** Precio para mostrar: 1,25€ o 3,99€/kg */
+export function formatPriceLabel(entryOrPrice, unit = 'ud') {
+  if (entryOrPrice && typeof entryOrPrice === 'object') {
+    const label = formatEuro(entryOrPrice.price)
+    if (!label) return ''
+    return entryOrPrice.unit === 'kg' ? `${label}/kg` : label
+  }
+  const label = formatEuro(entryOrPrice)
+  if (!label) return ''
+  return unit === 'kg' ? `${label}/kg` : label
+}
+
+/** Productos con precio real de tickets, agrupados por supermercado */
+export function listPricedProductsByStore(prices) {
+  const groups = []
+  for (const store of STORES) {
+    if (store.id === 'todos') continue
+    const bucket = prices?.[store.id]
+    if (!bucket || typeof bucket !== 'object') continue
+
+    const seen = new Set()
+    const entries = []
+    for (const [key, entry] of Object.entries(bucket)) {
+      if (!entry || typeof entry !== 'object') continue
+      if (!entry.name && !entry.productId) continue
+      if (key.startsWith('name:') && entry.productId && bucket[`id:${entry.productId}`]) continue
+      const dedupe = entry.productId ? `id:${entry.productId}` : key
+      if (seen.has(dedupe)) continue
+      seen.add(dedupe)
+      entries.push({
+        name: entry.name,
+        productId: entry.productId || null,
+        price: entry.price,
+        unit: entry.unit === 'kg' ? 'kg' : 'ud',
+        store: store.id,
+        updatedAt: entry.updatedAt || 0,
+      })
+    }
+    entries.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'es'))
+    if (entries.length) groups.push({ store, entries })
+  }
+  return groups
+}
+
 /** Asegura que las líneas del ticket existan en catálogo (crea extras si faltan) */
 export function resolveTicketCatalog(extraProducts, ticketItems) {
   let extras = Array.isArray(extraProducts) ? [...extraProducts] : []
@@ -316,11 +420,20 @@ export function resolveTicketCatalog(extraProducts, ticketItems) {
     }
 
     const qty = Math.max(1, Number(line.qty) || 1)
+    const unit = line.unit === 'kg' ? 'kg' : 'ud'
+    let unitPrice = Number(line.unitPrice)
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+      unitPrice = qty > 1 ? Math.round((line.price / qty) * 100) / 100 : line.price
+    }
+
     items.push({
       name: product?.name || name,
       productId: product?.id || null,
       qty,
       price: line.price,
+      unit,
+      unitPrice,
+      weightKg: line.weightKg || null,
       isNew,
       emoji: product?.emoji || '🛒',
       icon: product?.icon || null,
@@ -342,9 +455,13 @@ export function applyTicketPrices(prices, ticket) {
     const product = line.productId
       ? allProducts().find((p) => p.id === line.productId)
       : matchCatalogProduct(line.name)
-    const unit =
-      line.qty > 1 ? Math.round((line.price / line.qty) * 100) / 100 : line.price
-    if (!unit || unit <= 0) continue
+    const unit = line.unit === 'kg' ? 'kg' : 'ud'
+    let unitPrice = Number(line.unitPrice)
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+      unitPrice =
+        line.qty > 1 ? Math.round((line.price / line.qty) * 100) / 100 : line.price
+    }
+    if (!unitPrice || unitPrice <= 0) continue
 
     const keys = []
     if (product?.id) keys.push(`id:${product.id}`)
@@ -356,7 +473,8 @@ export function applyTicketPrices(prices, ticket) {
       bucket[key] = {
         name: product?.name || line.name,
         productId: product?.id || null,
-        price: unit,
+        price: unitPrice,
+        unit,
         store: storeId,
         updatedAt: at,
         ticketId: ticket.id,

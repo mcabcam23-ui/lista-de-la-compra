@@ -7,6 +7,7 @@ export const STORES = [
   { id: 'alimerka', name: 'Alimerka', short: 'ALI', brand: '#f5c400', light: true },
   { id: 'alcampo', name: 'Alcampo', short: 'ALC', brand: '#e30613' },
   { id: 'carrefour', name: 'Carrefour', short: 'CARR', brand: '#004e9f' },
+  { id: 'masymas', name: 'Masymas', short: 'MAS+', brand: '#1b7a3d' },
   { id: 'familia', name: 'Familia', short: 'FAM', brand: '#c62828' },
 ]
 
