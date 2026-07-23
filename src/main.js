@@ -10,6 +10,7 @@ import {
   setExtraProducts,
   upsertExtraProduct,
   allProducts,
+  guessCategory,
 } from './products.js'
 import { renderIcon, renderCategoryIcon } from './icons.js'
 import { STORES, getStore, storeOrder, storeLabel, renderStoreLogo } from './stores.js'
@@ -437,6 +438,7 @@ function renderRealesBrowse() {
       groups.length
         ? groups
             .map((group) => {
+              const sections = groupRealEntriesBySection(group.entries)
               return `
               <section class="reales-store-group" style="--store:${group.store.brand}">
                 <div class="reales-store-head">
@@ -444,21 +446,62 @@ function renderRealesBrowse() {
                   <strong>${escapeHtml(group.store.name)}</strong>
                   <em>${group.entries.length}</em>
                 </div>
-                <div class="product-grid">
-                  ${group.entries
-                    .map((entry) => renderRealProductCard(entry, group.store.id))
-                    .join('')}
-                </div>
+                ${sections
+                  .map(
+                    (section) => `
+                  <div class="reales-section">
+                    <div class="reales-section-head">
+                      <span class="reales-section-icon">${renderCategoryIcon(section.category.id, 'sm')}</span>
+                      <strong>${escapeHtml(section.category.name)}</strong>
+                      <em>${section.entries.length}</em>
+                    </div>
+                    <div class="product-grid">
+                      ${section.entries
+                        .map((entry) => renderRealProductCard(entry, group.store.id))
+                        .join('')}
+                    </div>
+                  </div>`,
+                  )
+                  .join('')}
               </section>`
             })
             .join('')
         : `<div class="empty-state">
             <div class="emoji">🧾</div>
             <h2>Aún no hay productos reales</h2>
-            <p>Escanea un ticket en la pestaña Tickets. Los productos y precios quedarán aquí, separados por supermercado.</p>
+            <p>Escanea un ticket en la pestaña Tickets. Los productos y precios quedarán aquí, separados por supermercado y sección.</p>
           </div>`
     }
   `
+}
+
+/** Agrupa productos reales por pasillo/categoría (orden del catálogo) */
+function groupRealEntriesBySection(entries) {
+  const map = new Map()
+  for (const entry of entries || []) {
+    const product = entry.productId ? getProductById(entry.productId) : null
+    const catId = product?.category || guessCategory(entry.name || '').category || 'despensa'
+    if (!map.has(catId)) map.set(catId, [])
+    map.get(catId).push(entry)
+  }
+
+  const sections = []
+  for (const cat of CATEGORIES) {
+    const list = map.get(cat.id)
+    if (!list?.length) continue
+    list.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'es'))
+    sections.push({ category: cat, entries: list })
+    map.delete(cat.id)
+  }
+  for (const [id, list] of map) {
+    if (!list?.length) continue
+    list.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'es'))
+    sections.push({
+      category: getCategory(id) || { id, name: 'Otros' },
+      entries: list,
+    })
+  }
+  return sections
 }
 
 function renderRealProductCard(entry, storeId) {
