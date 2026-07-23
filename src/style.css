@@ -1234,6 +1234,23 @@ button {
   box-shadow: var(--shadow);
 }
 
+.history-delete-btn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  color: var(--danger);
+  background: var(--danger-soft);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  touch-action: manipulation;
+}
+
+.history-delete-btn:active {
+  transform: scale(0.94);
+}
+
 .history-item .item-info {
   min-width: 0;
   flex: 1;

@@ -817,6 +817,19 @@ function onAction(e) {
         softRerender()
       }
       break
+    case 'delete-history-entry': {
+      const id = btn.dataset.id
+      if (!id) break
+      const name = (state.history || []).find((e) => historyEntryKey(e) === id)?.name
+      state.history = (state.history || []).filter((e) => historyEntryKey(e) !== id)
+      if (historyDay && !groupHistoryByDay(state.history).some((d) => d.key === historyDay)) {
+        historyDay = null
+      }
+      persist()
+      showToast(name ? `Eliminado: ${name}` : 'Producto eliminado del historial')
+      softRerender()
+      break
+    }
     case 'open-settings':
       openSheet('settings')
       break
@@ -1757,6 +1770,10 @@ function openTicketReview(draft) {
   })
 }
 
+function historyEntryKey(entry) {
+  return entry?.id || `legacy:${entry?.boughtAt || 0}:${entry?.name || ''}`
+}
+
 function renderHistoryEntry(entry) {
   const store = getStore(entry.store)
   const visual = {
@@ -1766,6 +1783,7 @@ function renderHistoryEntry(entry) {
   }
   const who = entry.boughtBy ? `por ${entry.boughtBy}` : 'comprado'
   const time = formatTimeOnly(entry.boughtAt)
+  const key = historyEntryKey(entry)
 
   return `
     <article class="history-item" style="--store:${store.brand}">
@@ -1774,6 +1792,14 @@ function renderHistoryEntry(entry) {
         <strong>${escapeHtml(entry.name)} <em class="history-qty">×${entry.qty || 1}</em></strong>
         <span class="history-store-line">${renderStoreLogo(store, 'xs')} ${escapeHtml(store.name)} · ${escapeHtml(who)} · ${escapeHtml(time)}</span>
       </div>
+      <button
+        class="history-delete-btn"
+        type="button"
+        data-action="delete-history-entry"
+        data-id="${escapeAttr(key)}"
+        aria-label="Borrar ${escapeAttr(entry.name)} del historial"
+        title="Borrar"
+      >✕</button>
     </article>
   `
 }
